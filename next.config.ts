@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
+        hostname: "www.jumbo.com",
+      },
+      {
+        protocol: "https",
         hostname: "placehold.co",
       },
     ],

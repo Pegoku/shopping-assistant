@@ -142,13 +142,21 @@ async function updateRunProgress(runId: string, state: RunProgressState) {
 
 async function enrichProducts(results: ScrapeResult[], runId: string, progressState: RunProgressState) {
   const unresolvedProducts = results.flatMap((result) => result.products).filter((product) => !product.genericNameEn || !product.genericNameEs);
-  console.log(`[AI] Enriching ${unresolvedProducts.length} products with generic names`);
+  console.log(`[AI] Translating and normalizing ${unresolvedProducts.length} product names into English and Spanish generic labels`);
   progressState.currentStore = "AI";
   progressState.currentCategory = null;
-  progressState.currentMessage = `AI enrichment for ${unresolvedProducts.length} products`;
+  progressState.currentMessage = `Preparing AI translation for ${unresolvedProducts.length} product names`;
   await updateRunProgress(runId, progressState);
 
-  const names = await generateGenericNamesBatch(unresolvedProducts.map((product) => product.originalName));
+  const names = await generateGenericNamesBatch(unresolvedProducts.map((product) => product.originalName), async (progress) => {
+    progressState.currentStore = "AI";
+    progressState.currentCategory = null;
+    progressState.currentMessage =
+      progress.processedNames >= progress.totalNames
+        ? `AI finished translating ${progress.totalNames} product names into generic English/Spanish labels`
+        : `AI translating product names to generic English/Spanish labels - batch ${progress.batchIndex}/${progress.totalBatches} (${progress.processedNames}/${progress.totalNames} done)`;
+    await updateRunProgress(runId, progressState);
+  });
 
   for (const product of unresolvedProducts) {
     const enriched = names.get(product.originalName);
@@ -158,6 +166,10 @@ async function enrichProducts(results: ScrapeResult[], runId: string, progressSt
       product.genericNameEs = enriched.spanish;
     }
   }
+
+  progressState.currentStore = "AI";
+  progressState.currentMessage = `AI name translation complete - resuming product persistence`;
+  await updateRunProgress(runId, progressState);
 }
 
 function getProductKey(product: ScrapedProduct) {

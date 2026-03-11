@@ -87,7 +87,16 @@ export async function generateGenericNames(originalName: string): Promise<Generi
   };
 }
 
-export async function generateGenericNamesBatch(originalNames: string[]) {
+export async function generateGenericNamesBatch(
+  originalNames: string[],
+  onProgress?: (progress: {
+    totalNames: number;
+    processedNames: number;
+    batchIndex: number;
+    totalBatches: number;
+    batchSize: number;
+  }) => Promise<void> | void,
+) {
   const uniqueNames = Array.from(new Set(originalNames.map((name) => name.trim()).filter(Boolean)));
 
   if (!uniqueNames.length) {
@@ -96,9 +105,18 @@ export async function generateGenericNamesBatch(originalNames: string[]) {
 
   const batchSize = Number(process.env.AI_ENRICHMENT_BATCH_SIZE ?? 30);
   const results = new Map<string, GenericNames>();
+  const totalBatches = Math.ceil(uniqueNames.length / batchSize);
 
   for (let index = 0; index < uniqueNames.length; index += batchSize) {
     const batch = uniqueNames.slice(index, index + batchSize);
+    const batchIndex = Math.floor(index / batchSize) + 1;
+    await onProgress?.({
+      totalNames: uniqueNames.length,
+      processedNames: index,
+      batchIndex,
+      totalBatches,
+      batchSize: batch.length,
+    });
     const prompt = batch.map((name, itemIndex) => `${itemIndex + 1}. ${name}`).join("\n");
     const parsed = await callAi<{
       items?: Array<{
@@ -127,6 +145,14 @@ export async function generateGenericNamesBatch(originalNames: string[]) {
         spanish: found?.spanish?.trim().toLowerCase() || fallbackNames(name).spanish,
       });
     }
+
+    await onProgress?.({
+      totalNames: uniqueNames.length,
+      processedNames: Math.min(index + batch.length, uniqueNames.length),
+      batchIndex,
+      totalBatches,
+      batchSize: batch.length,
+    });
   }
 
   return results;
