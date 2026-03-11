@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Supermarket {
+  AH
+  JUMBO
+}
+
+enum FetchStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model Product {
+  id               String            @id @default(cuid())
+  supermarket      Supermarket
+  originalName     String
+  genericNameEn    String
+  genericNameEs    String
+  quantityText     String
+  unitAmount       Float?
+  normalizedUnit   String?
+  currentPrice     Float
+  currentUnitPrice Float?
+  imageUrl         String?
+  sourceUrl        String?
+  dealText         String?
+  isDealActive     Boolean           @default(false)
+  lastFetchedAt    DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  categories       ProductCategory[]
+  priceHistory     PriceHistory[]
+  adminEdits       AdminEdit[]
+}
+
+model Category {
+  id        String            @id @default(cuid())
+  slug      String            @unique
+  label     String
+  products  ProductCategory[]
+  createdAt DateTime          @default(now())
+}
+
+model ProductCategory {
+  productId  String
+  categoryId String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([productId, categoryId])
+}
+
+model PriceHistory {
+  id          String      @id @default(cuid())
+  productId   String
+  price       Float
+  unitPrice   Float?
+  isDeal      Boolean     @default(false)
+  dealText    String?
+  capturedAt  DateTime    @default(now())
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, capturedAt])
+}
+
+model FetchRun {
+  id            String       @id @default(cuid())
+  status        FetchStatus  @default(PENDING)
+  supermarket   Supermarket?
+  sourceMode    String
+  startedAt     DateTime     @default(now())
+  completedAt   DateTime?
+  itemsFetched  Int          @default(0)
+  itemsCreated  Int          @default(0)
+  itemsUpdated  Int          @default(0)
+  errorMessage  String?
+}
+
+model AdminEdit {
+  id            String    @id @default(cuid())
+  productId     String
+  fieldName     String
+  previousValue String?
+  nextValue     String?
+  createdAt     DateTime  @default(now())
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, createdAt])
+}
