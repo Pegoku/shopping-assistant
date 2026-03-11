@@ -3,6 +3,8 @@ import { AdminLivePanel } from "@/components/admin/admin-live-panel";
 import { AdminProductsTable } from "@/components/admin/admin-products-table";
 import { getFetchRuns, getLatestFetchRun, getProducts } from "@/lib/queries";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminPage() {
   const [products, fetchRuns, latestRun] = await Promise.all([getProducts(), getFetchRuns(), getLatestFetchRun()]);
 

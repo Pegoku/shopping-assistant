@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import type { FetchRunSummary, ProductCardData } from "@/lib/types";
+import type { FetchRunStoreSummary, FetchRunSummary, ProductCardData } from "@/lib/types";
 
 function isMissingTableError(error: unknown) {
   return (
@@ -131,6 +131,7 @@ export async function getFetchRuns(): Promise<FetchRunSummary[]> {
     progressPercent: asFetchRunSummaryRow(run).progressPercent,
     warningCount: asFetchRunSummaryRow(run).warningCount,
     errorMessage: run.errorMessage,
+    stores: mapStoreSummary(run),
   }));
 }
 
@@ -176,6 +177,7 @@ export async function getLatestFetchRun(): Promise<FetchRunSummary | null> {
     progressPercent: asFetchRunSummaryRow(run).progressPercent,
     warningCount: asFetchRunSummaryRow(run).warningCount,
     errorMessage: run.errorMessage,
+    stores: mapStoreSummary(run),
   };
 }
 
@@ -191,8 +193,51 @@ type FetchRunSummaryRow = {
   currentMessage: string | null;
   progressPercent: number;
   warningCount: number;
+  ahCategoriesDone: number;
+  ahCategoriesTotal: number | null;
+  ahPagesProcessed: number;
+  ahPagesExpected: number | null;
+  ahItemsFound: number;
+  ahWarnings: number;
+  ahCurrentCategory: string | null;
+  ahCurrentMessage: string | null;
+  jumboCategoriesDone: number;
+  jumboCategoriesTotal: number | null;
+  jumboPagesProcessed: number;
+  jumboPagesExpected: number | null;
+  jumboItemsFound: number;
+  jumboWarnings: number;
+  jumboCurrentCategory: string | null;
+  jumboCurrentMessage: string | null;
 };
 
 function asFetchRunSummaryRow(run: unknown) {
   return run as unknown as FetchRunSummaryRow;
+}
+
+function mapStoreSummary(run: unknown): { AH: FetchRunStoreSummary; JUMBO: FetchRunStoreSummary } {
+  const row = asFetchRunSummaryRow(run);
+
+  return {
+    AH: {
+      categoriesDone: row.ahCategoriesDone,
+      categoriesTotal: row.ahCategoriesTotal,
+      pagesProcessed: row.ahPagesProcessed,
+      pagesExpected: row.ahPagesExpected,
+      itemsFound: row.ahItemsFound,
+      warnings: row.ahWarnings,
+      currentCategory: row.ahCurrentCategory,
+      currentMessage: row.ahCurrentMessage,
+    },
+    JUMBO: {
+      categoriesDone: row.jumboCategoriesDone,
+      categoriesTotal: row.jumboCategoriesTotal,
+      pagesProcessed: row.jumboPagesProcessed,
+      pagesExpected: row.jumboPagesExpected,
+      itemsFound: row.jumboItemsFound,
+      warnings: row.jumboWarnings,
+      currentCategory: row.jumboCurrentCategory,
+      currentMessage: row.jumboCurrentMessage,
+    },
+  };
 }

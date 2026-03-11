@@ -54,7 +54,7 @@ export function ForceFetchButton({
 
     setCategoriesLoading(true);
     try {
-      const response = await fetch("/api/admin/fetch/categories", { cache: "no-store" });
+      const response = await fetch("/api/admin/scrape-categories", { cache: "no-store" });
       const payload = (await response.json()) as CategoryPayload & { ok: boolean };
       setCategories({ ahCategories: payload.ahCategories, jumboCategories: payload.jumboCategories });
     } finally {
@@ -107,6 +107,10 @@ export function ForceFetchButton({
                 progressPercent: 0,
                 warningCount: 0,
                 errorMessage: null,
+                stores: {
+                  AH: emptyStoreSummary,
+                  JUMBO: emptyStoreSummary,
+                },
               };
           onRunChange?.(nextRun);
           return nextRun;
@@ -119,7 +123,6 @@ export function ForceFetchButton({
     }
   }
 
-  const progressWidth = `${Math.max(4, Math.round(run?.progressPercent ?? 0))}%`;
   const isRunning = run?.status === "PENDING";
   const categoryCount = useMemo(
     () => ({ ah: selectedAh.length, jumbo: selectedJumbo.length }),
@@ -188,42 +191,102 @@ export function ForceFetchButton({
           </div>
         </div>
 
-        <div className="mt-3 h-3 overflow-hidden rounded-full bg-gray-100">
-          <div className="h-full rounded-full bg-blue-600 transition-all duration-500" style={{ width: progressWidth }} />
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <StoreProgressCard
+            store="AH"
+            summary={run?.stores.AH ?? emptyStoreSummary}
+            startedAt={run?.startedAt ?? null}
+            active={run?.currentStore === "AH"}
+          />
+          <StoreProgressCard
+            store="JUMBO"
+            summary={run?.stores.JUMBO ?? emptyStoreSummary}
+            startedAt={run?.startedAt ?? null}
+            active={run?.currentStore === "JUMBO"}
+          />
         </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-gray-600 sm:grid-cols-4">
-          <div>
-            <p className="font-medium text-gray-900">Found</p>
-            <p>{run?.itemsDiscovered ?? 0}{run?.itemsExpected ? ` / ${run.itemsExpected}` : ""}</p>
-          </div>
-          <div>
-            <p className="font-medium text-gray-900">Pages</p>
-            <p>{run?.pagesProcessed ?? 0}{run?.pagesExpected ? ` / ${run.pagesExpected}` : ""}</p>
-          </div>
-          <div>
-            <p className="font-medium text-gray-900">Categories</p>
-            <p>{run?.categoriesDone ?? 0}{run?.categoriesTotal ? ` / ${run.categoriesTotal}` : ""}</p>
-          </div>
-          <div>
-            <p className="font-medium text-gray-900">Warnings</p>
-            <p>{run?.warningCount ?? 0}</p>
-          </div>
-        </div>
-
-        {run?.currentStore || run?.currentCategory ? (
-          <p className="mt-3 text-sm text-gray-500">
-            {run.currentStore ? `${run.currentStore}` : ""}
-            {run.currentStore && run.currentCategory ? " - " : ""}
-            {run.currentCategory ?? ""}
-          </p>
-        ) : null}
 
         {run?.errorMessage ? <p className="mt-2 text-sm text-red-600">{run.errorMessage}</p> : null}
       </div>
 
       {message ? <p className="text-sm text-gray-600">{message}</p> : null}
     </div>
+  );
+}
+
+const emptyStoreSummary = {
+  categoriesDone: 0,
+  categoriesTotal: null,
+  pagesProcessed: 0,
+  pagesExpected: null,
+  itemsFound: 0,
+  warnings: 0,
+  currentCategory: null,
+  currentMessage: null,
+};
+
+function StoreProgressCard({
+  store,
+  summary,
+  startedAt,
+  active,
+}: {
+  store: "AH" | "JUMBO";
+  summary: FetchRunSummary["stores"]["AH"];
+  startedAt: string | null;
+  active: boolean;
+}) {
+  const categoryPercent = summary.categoriesTotal
+    ? Math.min(100, (summary.categoriesDone / summary.categoriesTotal) * 100)
+    : 0;
+  const progressWidth = `${Math.max(summary.categoriesDone > 0 ? 4 : 0, Math.round(categoryPercent))}%`;
+  const elapsedSeconds = startedAt ? Math.max(1, (Date.now() - new Date(startedAt).getTime()) / 1000) : 1;
+  const itemsPerSecond = summary.itemsFound / elapsedSeconds;
+
+  return (
+    <section className={`rounded-2xl border p-4 ${active ? "border-blue-300 bg-blue-50/50" : "border-gray-200 bg-gray-50"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">{store}</p>
+          <p className="text-sm text-gray-500">{summary.currentMessage ?? "Waiting"}</p>
+        </div>
+        <p className="text-sm text-gray-600">
+          {summary.categoriesDone}
+          {summary.categoriesTotal ? ` / ${summary.categoriesTotal}` : ""} categories
+        </p>
+      </div>
+
+      <div className="mt-3 h-3 overflow-hidden rounded-full bg-white">
+        <div className={`h-full rounded-full transition-all duration-500 ${store === "AH" ? "bg-sky-600" : "bg-amber-500"}`} style={{ width: progressWidth }} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-gray-600 xl:grid-cols-3">
+        <div>
+          <p className="font-medium text-gray-900">Categories</p>
+          <p>{summary.categoriesDone}{summary.categoriesTotal ? ` / ${summary.categoriesTotal}` : ""}</p>
+        </div>
+        <div>
+          <p className="font-medium text-gray-900">Products found</p>
+          <p>{summary.itemsFound}</p>
+        </div>
+        <div>
+          <p className="font-medium text-gray-900">Pages</p>
+          <p>{summary.pagesProcessed}{summary.pagesExpected ? ` / ${summary.pagesExpected}` : ""}</p>
+        </div>
+        <div>
+          <p className="font-medium text-gray-900">Items/sec</p>
+          <p>{itemsPerSecond.toFixed(1)}</p>
+        </div>
+        <div>
+          <p className="font-medium text-gray-900">Warnings</p>
+          <p>{summary.warnings}</p>
+        </div>
+        <div>
+          <p className="font-medium text-gray-900">Current category</p>
+          <p className="truncate">{summary.currentCategory ?? "-"}</p>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -93,6 +93,22 @@ model FetchRun {
   currentMessage    String?
   progressPercent   Float        @default(0)
   warningCount      Int          @default(0)
+  ahCategoriesDone  Int          @default(0)
+  ahCategoriesTotal Int?
+  ahPagesProcessed  Int          @default(0)
+  ahPagesExpected   Int?
+  ahItemsFound      Int          @default(0)
+  ahWarnings        Int          @default(0)
+  ahCurrentCategory String?
+  ahCurrentMessage  String?
+  jumboCategoriesDone  Int       @default(0)
+  jumboCategoriesTotal Int?
+  jumboPagesProcessed  Int       @default(0)
+  jumboPagesExpected   Int?
+  jumboItemsFound      Int       @default(0)
+  jumboWarnings        Int       @default(0)
+  jumboCurrentCategory String?
+  jumboCurrentMessage  String?
   errorMessage      String?
 }
 

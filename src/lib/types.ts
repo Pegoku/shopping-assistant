@@ -55,4 +55,19 @@ export type FetchRunSummary = {
   progressPercent: number;
   warningCount: number;
   errorMessage: string | null;
+  stores: {
+    AH: FetchRunStoreSummary;
+    JUMBO: FetchRunStoreSummary;
+  };
+};
+
+export type FetchRunStoreSummary = {
+  categoriesDone: number;
+  categoriesTotal: number | null;
+  pagesProcessed: number;
+  pagesExpected: number | null;
+  itemsFound: number;
+  warnings: number;
+  currentCategory: string | null;
+  currentMessage: string | null;
 };

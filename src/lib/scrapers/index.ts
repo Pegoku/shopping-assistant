@@ -26,6 +26,28 @@ type RunProgressState = {
   currentMessage: string | null;
   warningCount: number;
   progressPercent: number;
+  stores: {
+    AH: {
+      categoriesDone: number;
+      categoriesTotal: number | null;
+      pagesProcessed: number;
+      pagesExpected: number | null;
+      itemsFound: number;
+      warnings: number;
+      currentCategory: string | null;
+      currentMessage: string | null;
+    };
+    JUMBO: {
+      categoriesDone: number;
+      categoriesTotal: number | null;
+      pagesProcessed: number;
+      pagesExpected: number | null;
+      itemsFound: number;
+      warnings: number;
+      currentCategory: string | null;
+      currentMessage: string | null;
+    };
+  };
 };
 
 const activeRuns = new Set<string>();
@@ -43,13 +65,46 @@ function emptyProgressState(): RunProgressState {
     currentMessage: null,
     warningCount: 0,
     progressPercent: 0,
+    stores: {
+      AH: {
+        categoriesDone: 0,
+        categoriesTotal: null,
+        pagesProcessed: 0,
+        pagesExpected: null,
+        itemsFound: 0,
+        warnings: 0,
+        currentCategory: null,
+        currentMessage: null,
+      },
+      JUMBO: {
+        categoriesDone: 0,
+        categoriesTotal: null,
+        pagesProcessed: 0,
+        pagesExpected: null,
+        itemsFound: 0,
+        warnings: 0,
+        currentCategory: null,
+        currentMessage: null,
+      },
+    },
   };
 }
 
 async function updateRunProgress(runId: string, state: RunProgressState) {
-  const pagePercent = state.pagesExpected ? state.pagesProcessed / state.pagesExpected : 0;
-  const categoryPercent = state.categoriesTotal ? state.categoriesDone / state.categoriesTotal : 0;
-  state.progressPercent = clamp(Math.max(pagePercent, categoryPercent) * 100, 0, 99);
+  const ahCategoryPercent = state.stores.AH.categoriesTotal
+    ? state.stores.AH.categoriesDone / state.stores.AH.categoriesTotal
+    : 0;
+  const jumboCategoryPercent = state.stores.JUMBO.categoriesTotal
+    ? state.stores.JUMBO.categoriesDone / state.stores.JUMBO.categoriesTotal
+    : 0;
+  state.progressPercent = clamp(Math.max(ahCategoryPercent, jumboCategoryPercent) * 100, 0, 99);
+  state.categoriesDone = state.stores.AH.categoriesDone + state.stores.JUMBO.categoriesDone;
+  state.categoriesTotal =
+    (state.stores.AH.categoriesTotal ?? 0) + (state.stores.JUMBO.categoriesTotal ?? 0) || null;
+  state.pagesProcessed = state.stores.AH.pagesProcessed + state.stores.JUMBO.pagesProcessed;
+  state.pagesExpected = (state.stores.AH.pagesExpected ?? 0) + (state.stores.JUMBO.pagesExpected ?? 0) || null;
+  state.itemsDiscovered = state.stores.AH.itemsFound + state.stores.JUMBO.itemsFound;
+  state.warningCount = state.stores.AH.warnings + state.stores.JUMBO.warnings;
 
   await prisma.fetchRun.update({
     where: { id: runId },
@@ -65,6 +120,22 @@ async function updateRunProgress(runId: string, state: RunProgressState) {
       currentMessage: state.currentMessage,
       progressPercent: state.progressPercent,
       warningCount: state.warningCount,
+      ahCategoriesDone: state.stores.AH.categoriesDone,
+      ahCategoriesTotal: state.stores.AH.categoriesTotal,
+      ahPagesProcessed: state.stores.AH.pagesProcessed,
+      ahPagesExpected: state.stores.AH.pagesExpected,
+      ahItemsFound: state.stores.AH.itemsFound,
+      ahWarnings: state.stores.AH.warnings,
+      ahCurrentCategory: state.stores.AH.currentCategory,
+      ahCurrentMessage: state.stores.AH.currentMessage,
+      jumboCategoriesDone: state.stores.JUMBO.categoriesDone,
+      jumboCategoriesTotal: state.stores.JUMBO.categoriesTotal,
+      jumboPagesProcessed: state.stores.JUMBO.pagesProcessed,
+      jumboPagesExpected: state.stores.JUMBO.pagesExpected,
+      jumboItemsFound: state.stores.JUMBO.itemsFound,
+      jumboWarnings: state.stores.JUMBO.warnings,
+      jumboCurrentCategory: state.stores.JUMBO.currentCategory,
+      jumboCurrentMessage: state.stores.JUMBO.currentMessage,
     },
   });
 }
@@ -285,6 +356,7 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
   let hadWarnings = false;
 
   const reportProgress = async (event: ScrapeProgressEvent) => {
+    const storeKey = event.store ?? null;
     progressState.currentStore = event.store ?? progressState.currentStore;
     progressState.currentCategory = event.category ?? progressState.currentCategory;
     progressState.currentMessage = event.message;
@@ -295,8 +367,21 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
     progressState.itemsDiscovered += event.itemsDiscovered ?? 0;
     progressState.itemsExpected = event.itemsExpected ?? progressState.itemsExpected;
 
+    if (storeKey) {
+      const store = progressState.stores[storeKey];
+      store.currentCategory = event.category ?? store.currentCategory;
+      store.currentMessage = event.message;
+      store.pagesProcessed += event.pagesProcessed ?? 0;
+      store.pagesExpected = event.pagesExpected ?? store.pagesExpected;
+      store.categoriesDone = event.categoriesDone ?? store.categoriesDone;
+      store.categoriesTotal = event.categoriesTotal ?? store.categoriesTotal;
+      store.itemsFound += event.itemsDiscovered ?? 0;
+      if (event.warning) {
+        store.warnings += 1;
+      }
+    }
+
     if (event.warning) {
-      progressState.warningCount += 1;
       hadWarnings = true;
     }
 
@@ -344,6 +429,8 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
               itemsUpdated,
               currentStore: result.supermarket,
               currentMessage: `Persisted ${itemsFetched} products`,
+              ahItemsFound: progressState.stores.AH.itemsFound,
+              jumboItemsFound: progressState.stores.JUMBO.itemsFound,
             },
           });
         }
