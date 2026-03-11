@@ -6,21 +6,33 @@ export type CategoryLink = {
 };
 
 export async function fetchHtml(url: string) {
-  const response = await fetch(url, {
-    headers: {
-      "user-agent":
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "accept-language": "nl-NL,nl;q=0.9,en;q=0.8",
-    },
-    cache: "no-store",
-  });
+  const retries = Number(process.env.SCRAPER_FETCH_RETRIES ?? 3);
 
-  if (!response.ok) {
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    const response = await fetch(url, {
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-language": "nl-NL,nl;q=0.9,en;q=0.8",
+      },
+      cache: "no-store",
+    });
+
+    if (response.ok) {
+      return response.text();
+    }
+
+    if (attempt < retries) {
+      console.warn(`[FETCH] Retry ${attempt}/${retries - 1} for ${url} after HTTP ${response.status}`);
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+      continue;
+    }
+
     throw new Error(`Failed to fetch ${url}: ${response.status}`);
   }
 
-  return response.text();
+  throw new Error(`Failed to fetch ${url}`);
 }
 
 export function absoluteUrl(baseUrl: string, path: string | undefined | null) {

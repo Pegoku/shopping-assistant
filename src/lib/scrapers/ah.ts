@@ -1,9 +1,10 @@
 import { Supermarket } from "@prisma/client";
-import type { ScrapeResult, ScrapedProduct } from "@/lib/scrapers/types";
+import type { ScrapeProgressReporter, ScrapeResult, ScrapedProduct } from "@/lib/scrapers/types";
 import {
   absoluteUrl,
   fetchHtml,
   getOptionalPageLimit,
+  type CategoryLink,
   parseCategoryLinksFromHtml,
   parseQuantity,
   textContent,
@@ -32,6 +33,14 @@ type AhProductRecord = {
 };
 
 const baseUrl = "https://www.ah.nl";
+
+export async function discoverAlbertHeijnCategories(): Promise<CategoryLink[]> {
+  const html = await fetchHtml(`${baseUrl}/producten`);
+  return parseCategoryLinksFromHtml(
+    html,
+    (path) => /^\/producten\/\d+\//.test(path) && !path.includes("/producten/product/"),
+  );
+}
 
 function parseApolloState(html: string) {
   const match = html.match(/window\.__APOLLO_STATE__=\s*(\{[\s\S]*?\})\s*window\.__MEMBER_DATA__=/);
@@ -134,7 +143,7 @@ function parseProductsFromState(state: AhApolloState) {
   return products;
 }
 
-async function scrapeCategory(path: string) {
+async function scrapeCategory(path: string, label: string, reportProgress?: ScrapeProgressReporter) {
   const taxonomyMatch = path.match(/^\/producten\/(\d+)\//);
 
   if (!taxonomyMatch) {
@@ -148,30 +157,90 @@ async function scrapeCategory(path: string) {
   const totalPages = Math.max(1, Math.ceil(totalProducts / 36));
   const pageLimit = getOptionalPageLimit();
   const finalPage = pageLimit ? Math.min(totalPages, pageLimit) : totalPages;
+  console.log(`[AH] Category ${path} -> ${totalProducts} products across ${totalPages} pages${pageLimit ? ` (limited to ${finalPage})` : ""}`);
   const products = parseProductsFromState(firstPageState);
+  console.log(`[AH] ${path} page 1/${finalPage}: ${products.length} products`);
+  await reportProgress?.({
+    store: "AH",
+    category: label,
+    message: `AH ${label} page 1/${finalPage}`,
+    pagesProcessed: 1,
+    pagesExpected: finalPage,
+    itemsDiscovered: products.length,
+    itemsExpected: totalProducts,
+  });
 
   for (let page = 2; page <= finalPage; page += 1) {
-    const html = await fetchHtml(`${baseUrl}${path}?page=${page}&withOffset=true`);
-    const state = parseApolloState(html);
-    products.push(...parseProductsFromState(state));
+    try {
+      const html = await fetchHtml(`${baseUrl}${path}?page=${page}&withOffset=true`);
+      const state = parseApolloState(html);
+      const pageProducts = parseProductsFromState(state);
+      products.push(...pageProducts);
+      console.log(`[AH] ${path} page ${page}/${finalPage}: ${pageProducts.length} products (running total ${products.length})`);
+      await reportProgress?.({
+        store: "AH",
+        category: label,
+        message: `AH ${label} page ${page}/${finalPage}`,
+        pagesProcessed: 1,
+        itemsDiscovered: pageProducts.length,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `Failed page ${page}`;
+      console.error(`[AH] ${path} page ${page}/${finalPage} failed: ${message}`);
+      await reportProgress?.({
+        store: "AH",
+        category: label,
+        message: `AH ${label} page ${page}/${finalPage} failed: ${message}`,
+        pagesProcessed: 1,
+        warning: true,
+      });
+    }
   }
 
   return products;
 }
 
-export async function scrapeAlbertHeijn(): Promise<ScrapeResult> {
-  const html = await fetchHtml(`${baseUrl}/producten`);
-  const categories = parseCategoryLinksFromHtml(
-    html,
-    (path) => /^\/producten\/\d+\//.test(path) && !path.includes("/producten/product/"),
-  );
+export async function scrapeAlbertHeijn(
+  reportProgress?: ScrapeProgressReporter,
+  selectedCategoryPaths?: string[],
+): Promise<ScrapeResult> {
+  const categories = await discoverAlbertHeijnCategories();
   const categoryLimit = Number(process.env.AH_CATEGORY_LIMIT ?? "");
-  const finalCategories = Number.isFinite(categoryLimit) && categoryLimit > 0 ? categories.slice(0, categoryLimit) : categories;
+  const filteredCategories = selectedCategoryPaths?.length
+    ? categories.filter((category) => selectedCategoryPaths.includes(category.path))
+    : categories;
+  const finalCategories = Number.isFinite(categoryLimit) && categoryLimit > 0 ? filteredCategories.slice(0, categoryLimit) : filteredCategories;
+  console.log(`[AH] Found ${categories.length} categories${finalCategories.length !== categories.length ? `, scraping first ${finalCategories.length}` : ""}`);
+  await reportProgress?.({
+    store: "AH",
+    message: `AH discovered ${categories.length} categories`,
+    categoriesTotal: finalCategories.length,
+  });
   const products: ScrapedProduct[] = [];
 
-  for (const category of finalCategories) {
-    products.push(...(await scrapeCategory(category.path)));
+  for (const [index, category] of finalCategories.entries()) {
+    console.log(`[AH] Scraping category: ${category.label} (${category.path})`);
+    await reportProgress?.({
+      store: "AH",
+      category: category.label,
+      message: `AH scraping ${category.label}`,
+      categoriesDone: index,
+      categoriesTotal: finalCategories.length,
+    });
+    const categoryProducts = await scrapeCategory(category.path, category.label, reportProgress);
+    products.push(...categoryProducts);
+    console.log(`[AH] Completed ${category.label}: ${categoryProducts.length} products (overall ${products.length})`);
+    await reportProgress?.({
+      store: "AH",
+      category: category.label,
+      message: `AH completed ${category.label}`,
+      categoriesDone: index + 1,
+      categoriesTotal: finalCategories.length,
+      itemsDiscovered: 0,
+    });
   }
+
+  console.log(`[AH] Finished scrape with ${products.length} products`);
 
   return {
     supermarket: Supermarket.AH,

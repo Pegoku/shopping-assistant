@@ -43,5 +43,16 @@ export type FetchRunSummary = {
   itemsFetched: number;
   itemsCreated: number;
   itemsUpdated: number;
+  itemsDiscovered: number;
+  itemsExpected: number | null;
+  pagesProcessed: number;
+  pagesExpected: number | null;
+  categoriesDone: number;
+  categoriesTotal: number | null;
+  currentStore: string | null;
+  currentCategory: string | null;
+  currentMessage: string | null;
+  progressPercent: number;
+  warningCount: number;
   errorMessage: string | null;
 };

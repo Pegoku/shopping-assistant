@@ -22,3 +22,18 @@ export type ScrapeResult = {
   supermarket: Supermarket;
   products: ScrapedProduct[];
 };
+
+export type ScrapeProgressEvent = {
+  store?: "AH" | "JUMBO";
+  category?: string;
+  message: string;
+  pagesProcessed?: number;
+  pagesExpected?: number;
+  categoriesDone?: number;
+  categoriesTotal?: number;
+  itemsDiscovered?: number;
+  itemsExpected?: number;
+  warning?: boolean;
+};
+
+export type ScrapeProgressReporter = (event: ScrapeProgressEvent) => Promise<void>;

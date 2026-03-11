@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { AdminProductsTable } from "@/components/admin/admin-products-table";
 import { ForceFetchButton } from "@/components/admin/force-fetch-button";
-import { getFetchRuns, getProducts } from "@/lib/queries";
+import { getFetchRuns, getLatestFetchRun, getProducts } from "@/lib/queries";
 
 export default async function AdminPage() {
-  const [products, fetchRuns] = await Promise.all([getProducts(), getFetchRuns()]);
+  const [products, fetchRuns, latestRun] = await Promise.all([getProducts(), getFetchRuns(), getLatestFetchRun()]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -13,7 +13,7 @@ export default async function AdminPage() {
           <p className="text-xs tracking-wide uppercase text-gray-500 font-medium">Admin console</p>
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold leading-tight mt-2 text-gray-900">Refresh scrapes, inspect recent runs, and manually fix live price data.</h1>
         </div>
-        <ForceFetchButton />
+        <ForceFetchButton initialRun={latestRun} />
       </section>
 
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -33,10 +33,12 @@ export default async function AdminPage() {
                 <div>
                   <strong>{run.status}</strong>
                   <p>{run.sourceMode} mode</p>
+                  {run.currentMessage ? <p>{run.currentMessage}</p> : null}
                 </div>
                 <div>
                   <span>{run.itemsFetched} fetched</span>
                   <span>{run.itemsCreated} new / {run.itemsUpdated} updated</span>
+                  <span>{run.progressPercent.toFixed(0)}% progress</span>
                 </div>
               </article>
             ))}

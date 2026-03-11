@@ -15,6 +15,7 @@ enum Supermarket {
 enum FetchStatus {
   PENDING
   SUCCESS
+  PARTIAL
   FAILED
 }
 
@@ -72,16 +73,27 @@ model PriceHistory {
 }
 
 model FetchRun {
-  id            String       @id @default(cuid())
-  status        FetchStatus  @default(PENDING)
-  supermarket   Supermarket?
-  sourceMode    String
-  startedAt     DateTime     @default(now())
-  completedAt   DateTime?
-  itemsFetched  Int          @default(0)
-  itemsCreated  Int          @default(0)
-  itemsUpdated  Int          @default(0)
-  errorMessage  String?
+  id                String       @id @default(cuid())
+  status            FetchStatus  @default(PENDING)
+  supermarket       Supermarket?
+  sourceMode        String
+  startedAt         DateTime     @default(now())
+  completedAt       DateTime?
+  itemsFetched      Int          @default(0)
+  itemsCreated      Int          @default(0)
+  itemsUpdated      Int          @default(0)
+  itemsDiscovered   Int          @default(0)
+  itemsExpected     Int?
+  pagesProcessed    Int          @default(0)
+  pagesExpected     Int?
+  categoriesDone    Int          @default(0)
+  categoriesTotal   Int?
+  currentStore      String?
+  currentCategory   String?
+  currentMessage    String?
+  progressPercent   Float        @default(0)
+  warningCount      Int          @default(0)
+  errorMessage      String?
 }
 
 model AdminEdit {

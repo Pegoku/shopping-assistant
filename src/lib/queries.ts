@@ -90,6 +90,52 @@ export async function getFetchRuns(): Promise<FetchRunSummary[]> {
     itemsFetched: run.itemsFetched,
     itemsCreated: run.itemsCreated,
     itemsUpdated: run.itemsUpdated,
+    itemsDiscovered: run.itemsDiscovered,
+    itemsExpected: run.itemsExpected,
+    pagesProcessed: run.pagesProcessed,
+    pagesExpected: run.pagesExpected,
+    categoriesDone: run.categoriesDone,
+    categoriesTotal: run.categoriesTotal,
+    currentStore: run.currentStore,
+    currentCategory: run.currentCategory,
+    currentMessage: run.currentMessage,
+    progressPercent: run.progressPercent,
+    warningCount: run.warningCount,
     errorMessage: run.errorMessage,
   }));
+}
+
+export async function getLatestFetchRun(): Promise<FetchRunSummary | null> {
+  const run = await prisma.fetchRun.findFirst({
+    orderBy: {
+      startedAt: "desc",
+    },
+  });
+
+  if (!run) {
+    return null;
+  }
+
+  return {
+    id: run.id,
+    status: run.status,
+    sourceMode: run.sourceMode,
+    startedAt: run.startedAt.toISOString(),
+    completedAt: run.completedAt?.toISOString() ?? null,
+    itemsFetched: run.itemsFetched,
+    itemsCreated: run.itemsCreated,
+    itemsUpdated: run.itemsUpdated,
+    itemsDiscovered: run.itemsDiscovered,
+    itemsExpected: run.itemsExpected,
+    pagesProcessed: run.pagesProcessed,
+    pagesExpected: run.pagesExpected,
+    categoriesDone: run.categoriesDone,
+    categoriesTotal: run.categoriesTotal,
+    currentStore: run.currentStore,
+    currentCategory: run.currentCategory,
+    currentMessage: run.currentMessage,
+    progressPercent: run.progressPercent,
+    warningCount: run.warningCount,
+    errorMessage: run.errorMessage,
+  };
 }

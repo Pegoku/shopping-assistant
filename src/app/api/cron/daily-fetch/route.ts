@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runScrapeJob } from "@/lib/scrapers";
+import { createScrapeRun, runScrapeJob } from "@/lib/scrapers";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -9,6 +9,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await runScrapeJob();
+  const { runId } = await createScrapeRun(process.env.SCRAPER_MODE ?? "mock");
+  const result = await runScrapeJob(runId, { mode: "full" });
   return NextResponse.json(result, { status: result.ok ? 200 : 500 });
 }
