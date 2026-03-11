@@ -36,7 +36,7 @@ export function AdminLivePanel({
 
   return (
     <>
-      <section className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr] gap-7 p-7 border border-gray-100 bg-white shadow-sm rounded-3xl">
+      <section className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-7 p-7 border border-gray-100 bg-white shadow-sm rounded-3xl">
         <div>
           <p className="text-xs tracking-wide uppercase text-gray-500 font-medium">Admin console</p>
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold leading-tight mt-2 text-gray-900">Refresh scrapes, inspect recent runs, and manually fix live price data.</h1>

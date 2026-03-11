@@ -15,15 +15,15 @@ export default async function HomePage() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <span>Products tracked</span>
+            <span>Products tracked </span>
             <strong>{products.length}</strong>
           </div>
           <div>
-            <span>Trend badges</span>
+            <span>Trend badges </span>
             <strong>DoD + WoW</strong>
           </div>
           <div>
-            <span>View mode</span>
+            <span>View mode </span>
             <strong>Cards</strong>
           </div>
         </div>

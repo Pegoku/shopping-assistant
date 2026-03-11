@@ -113,7 +113,7 @@ export function ProductGrid({ products }: ProductGridProps) {
         <p>Search matches English, Spanish, and original store names.</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
         {filtered.map((product) => {
           const displayName = language === "es" ? product.genericNameEs : product.genericNameEn;
 

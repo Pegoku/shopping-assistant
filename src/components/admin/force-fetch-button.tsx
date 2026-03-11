@@ -260,7 +260,7 @@ function StoreProgressCard({
         <div className={`h-full rounded-full transition-all duration-500 ${store === "AH" ? "bg-sky-600" : "bg-amber-500"}`} style={{ width: progressWidth }} />
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-gray-600 xl:grid-cols-3">
+      <div className="mt-3 grid grid-cols-2 2xl:grid-cols-3 gap-x-4 gap-y-3 text-sm text-gray-600">
         <div>
           <p className="font-medium text-gray-900">Categories</p>
           <p>{summary.categoriesDone}{summary.categoriesTotal ? ` / ${summary.categoriesTotal}` : ""}</p>
