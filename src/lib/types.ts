@@ -7,6 +7,7 @@ export type ProductCardData = {
   genericNameEn: string;
   genericNameEs: string;
   quantityText: string;
+  normalizedUnit: string | null;
   currentPrice: number;
   currentUnitPrice: number | null;
   imageUrl: string | null;

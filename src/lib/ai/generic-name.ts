@@ -1,3 +1,5 @@
+import { prisma } from "@/lib/db";
+
 type GenericNames = {
   english: string;
   spanish: string;
@@ -124,15 +126,44 @@ export async function generateGenericNamesBatch(
     return new Map<string, GenericNames>();
   }
 
+  const cachedRows = await prisma.aiNameCache.findMany({
+    where: {
+      originalName: {
+        in: uniqueNames,
+      },
+    },
+  });
+
+  const results = new Map<string, GenericNames>(
+    cachedRows.map((row: { originalName: string; genericNameEn: string; genericNameEs: string }) => [
+      row.originalName,
+      {
+        english: row.genericNameEn,
+        spanish: row.genericNameEs,
+      },
+    ]),
+  );
+  const uncachedNames = uniqueNames.filter((name) => !results.has(name));
+
+  if (!uncachedNames.length) {
+    await onProgress?.({
+      totalNames: uniqueNames.length,
+      processedNames: uniqueNames.length,
+      batchIndex: 0,
+      totalBatches: 0,
+      batchSize: 0,
+    });
+    return results;
+  }
+
   const batchSize = Number(process.env.AI_ENRICHMENT_BATCH_SIZE ?? 50);
   const concurrency = Math.max(1, Number(process.env.AI_ENRICHMENT_CONCURRENCY ?? 4));
-  const results = new Map<string, GenericNames>();
-  const batches = Array.from({ length: Math.ceil(uniqueNames.length / batchSize) }, (_, index) => ({
-    batch: uniqueNames.slice(index * batchSize, index * batchSize + batchSize),
+  const batches = Array.from({ length: Math.ceil(uncachedNames.length / batchSize) }, (_, index) => ({
+    batch: uncachedNames.slice(index * batchSize, index * batchSize + batchSize),
     batchIndex: index + 1,
   }));
   const totalBatches = batches.length;
-  let processedNames = 0;
+  let processedNames = cachedRows.length;
 
   const batchResults = await mapWithConcurrency(batches, concurrency, async ({ batch, batchIndex }) => {
     await onProgress?.({
@@ -164,14 +195,34 @@ export async function generateGenericNamesBatch(
 
     const parsedItems = parsed?.items ?? [];
     const mapped = new Map<string, GenericNames>();
+    const cacheWrites: Array<{ originalName: string; genericNameEn: string; genericNameEs: string }> = [];
 
     for (const name of batch) {
       const found = parsedItems.find((item) => item.originalName?.trim() === name);
-      mapped.set(name, {
+      const genericNames = {
         english: found?.english?.trim().toLowerCase() || fallbackNames(name).english,
         spanish: found?.spanish?.trim().toLowerCase() || fallbackNames(name).spanish,
+      };
+      mapped.set(name, genericNames);
+      cacheWrites.push({
+        originalName: name,
+        genericNameEn: genericNames.english,
+        genericNameEs: genericNames.spanish,
       });
     }
+
+    await prisma.$transaction(
+      cacheWrites.map((entry) =>
+        prisma.aiNameCache.upsert({
+          where: { originalName: entry.originalName },
+          update: {
+            genericNameEn: entry.genericNameEn,
+            genericNameEs: entry.genericNameEs,
+          },
+          create: entry,
+        }),
+      ),
+    );
 
     processedNames += batch.length;
     await onProgress?.({

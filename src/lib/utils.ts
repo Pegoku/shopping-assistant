@@ -5,6 +5,18 @@ export function formatCurrency(value: number) {
   }).format(value);
 }
 
+export function formatUnitLabel(unit: string | null | undefined) {
+  if (!unit) {
+    return "item";
+  }
+
+  if (unit === "piece") {
+    return "item";
+  }
+
+  return unit;
+}
+
 export function formatPercent(value: number | null) {
   if (value === null || Number.isNaN(value)) {
     return "--";

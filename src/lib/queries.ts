@@ -71,6 +71,7 @@ export async function getProducts(): Promise<ProductCardData[]> {
       genericNameEn: product.genericNameEn,
       genericNameEs: product.genericNameEs,
       quantityText: product.quantityText,
+      normalizedUnit: product.normalizedUnit,
       currentPrice: product.currentPrice,
       currentUnitPrice: product.currentUnitPrice,
       imageUrl: product.imageUrl,
