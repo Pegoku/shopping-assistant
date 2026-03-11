@@ -99,21 +99,39 @@ function parseProductsFromHtml(html: string, categoryLabel: string) {
   return products;
 }
 
-async function scrapeCategory(category: { label: string; path: string }, reportProgress?: ScrapeProgressReporter) {
+function getProductKey(product: ScrapedProduct) {
+  return product.sourceUrl ?? product.sourceId ?? `${product.originalName}::${product.quantityText}`;
+}
+
+async function scrapeCategory(
+  category: { label: string; path: string },
+  seenKeys: Set<string>,
+  reportProgress?: ScrapeProgressReporter,
+) {
   const firstPageHtml = await fetchHtml(`${baseUrl}${category.path}`);
   const pageLimit = getOptionalPageLimit();
   const totalPages = getTotalPages(firstPageHtml);
   const finalPage = pageLimit ? Math.min(totalPages, pageLimit) : totalPages;
   console.log(`[JUMBO] Category ${category.label} (${category.path}) -> ${totalPages} pages${pageLimit ? ` (limited to ${finalPage})` : ""}`);
   const products = parseProductsFromHtml(firstPageHtml, category.label);
-  console.log(`[JUMBO] ${category.label} page 1/${finalPage}: ${products.length} products`);
+  let newProducts = 0;
+
+  for (const product of products) {
+    const key = getProductKey(product);
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      newProducts += 1;
+    }
+  }
+
+  console.log(`[JUMBO] ${category.label} page 1/${finalPage}: ${products.length} products (${newProducts} new)`);
   await reportProgress?.({
     store: "JUMBO",
     category: category.label,
     message: `Jumbo ${category.label} page 1/${finalPage}`,
     pagesProcessed: 1,
     pagesExpected: finalPage,
-    itemsDiscovered: products.length,
+    itemsDiscovered: newProducts,
   });
 
   for (let page = 2; page <= finalPage; page += 1) {
@@ -121,13 +139,23 @@ async function scrapeCategory(category: { label: string; path: string }, reportP
       const html = await fetchHtml(`${baseUrl}${category.path}?page=${page}`);
       const pageProducts = parseProductsFromHtml(html, category.label);
       products.push(...pageProducts);
-      console.log(`[JUMBO] ${category.label} page ${page}/${finalPage}: ${pageProducts.length} products (running total ${products.length})`);
+      let newPageProducts = 0;
+
+      for (const product of pageProducts) {
+        const key = getProductKey(product);
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          newPageProducts += 1;
+        }
+      }
+
+      console.log(`[JUMBO] ${category.label} page ${page}/${finalPage}: ${pageProducts.length} products (${newPageProducts} new, running total ${products.length})`);
       await reportProgress?.({
         store: "JUMBO",
         category: category.label,
         message: `Jumbo ${category.label} page ${page}/${finalPage}`,
         pagesProcessed: 1,
-        itemsDiscovered: pageProducts.length,
+        itemsDiscovered: newPageProducts,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : `Failed page ${page}`;
@@ -162,6 +190,7 @@ export async function scrapeJumbo(
     categoriesTotal: finalCategories.length,
   });
   const products: ScrapedProduct[] = [];
+  const seenKeys = new Set<string>();
 
   for (const [index, category] of finalCategories.entries()) {
     console.log(`[JUMBO] Scraping category: ${category.label}`);
@@ -172,7 +201,7 @@ export async function scrapeJumbo(
       categoriesDone: index,
       categoriesTotal: finalCategories.length,
     });
-    const categoryProducts = await scrapeCategory(category, reportProgress);
+    const categoryProducts = await scrapeCategory(category, seenKeys, reportProgress);
     products.push(...categoryProducts);
     console.log(`[JUMBO] Completed ${category.label}: ${categoryProducts.length} products (overall ${products.length})`);
     await reportProgress?.({

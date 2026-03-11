@@ -98,6 +98,10 @@ function extractPriceData(product: AhProductRecord) {
   };
 }
 
+function getProductKey(product: ScrapedProduct) {
+  return product.sourceUrl ?? product.sourceId ?? `${product.originalName}::${product.quantityText}`;
+}
+
 function parseProductsFromState(state: AhApolloState) {
   const payload = getSearchCategoryPayload(state);
   const refs = payload.products ?? [];
@@ -143,7 +147,12 @@ function parseProductsFromState(state: AhApolloState) {
   return products;
 }
 
-async function scrapeCategory(path: string, label: string, reportProgress?: ScrapeProgressReporter) {
+async function scrapeCategory(
+  path: string,
+  label: string,
+  seenKeys: Set<string>,
+  reportProgress?: ScrapeProgressReporter,
+) {
   const taxonomyMatch = path.match(/^\/producten\/(\d+)\//);
 
   if (!taxonomyMatch) {
@@ -159,14 +168,24 @@ async function scrapeCategory(path: string, label: string, reportProgress?: Scra
   const finalPage = pageLimit ? Math.min(totalPages, pageLimit) : totalPages;
   console.log(`[AH] Category ${path} -> ${totalProducts} products across ${totalPages} pages${pageLimit ? ` (limited to ${finalPage})` : ""}`);
   const products = parseProductsFromState(firstPageState);
-  console.log(`[AH] ${path} page 1/${finalPage}: ${products.length} products`);
+  let newProducts = 0;
+
+  for (const product of products) {
+    const key = getProductKey(product);
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      newProducts += 1;
+    }
+  }
+
+  console.log(`[AH] ${path} page 1/${finalPage}: ${products.length} products (${newProducts} new)`);
   await reportProgress?.({
     store: "AH",
     category: label,
     message: `AH ${label} page 1/${finalPage}`,
     pagesProcessed: 1,
     pagesExpected: finalPage,
-    itemsDiscovered: products.length,
+    itemsDiscovered: newProducts,
     itemsExpected: totalProducts,
   });
 
@@ -176,13 +195,23 @@ async function scrapeCategory(path: string, label: string, reportProgress?: Scra
       const state = parseApolloState(html);
       const pageProducts = parseProductsFromState(state);
       products.push(...pageProducts);
-      console.log(`[AH] ${path} page ${page}/${finalPage}: ${pageProducts.length} products (running total ${products.length})`);
+      let newPageProducts = 0;
+
+      for (const product of pageProducts) {
+        const key = getProductKey(product);
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          newPageProducts += 1;
+        }
+      }
+
+      console.log(`[AH] ${path} page ${page}/${finalPage}: ${pageProducts.length} products (${newPageProducts} new, running total ${products.length})`);
       await reportProgress?.({
         store: "AH",
         category: label,
         message: `AH ${label} page ${page}/${finalPage}`,
         pagesProcessed: 1,
-        itemsDiscovered: pageProducts.length,
+        itemsDiscovered: newPageProducts,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : `Failed page ${page}`;
@@ -217,6 +246,7 @@ export async function scrapeAlbertHeijn(
     categoriesTotal: finalCategories.length,
   });
   const products: ScrapedProduct[] = [];
+  const seenKeys = new Set<string>();
 
   for (const [index, category] of finalCategories.entries()) {
     console.log(`[AH] Scraping category: ${category.label} (${category.path})`);
@@ -227,7 +257,7 @@ export async function scrapeAlbertHeijn(
       categoriesDone: index,
       categoriesTotal: finalCategories.length,
     });
-    const categoryProducts = await scrapeCategory(category.path, category.label, reportProgress);
+    const categoryProducts = await scrapeCategory(category.path, category.label, seenKeys, reportProgress);
     products.push(...categoryProducts);
     console.log(`[AH] Completed ${category.label}: ${categoryProducts.length} products (overall ${products.length})`);
     await reportProgress?.({

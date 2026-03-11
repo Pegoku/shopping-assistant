@@ -160,6 +160,38 @@ async function enrichProducts(results: ScrapeResult[], runId: string, progressSt
   }
 }
 
+function getProductKey(product: ScrapedProduct) {
+  return `${product.supermarket}::${product.sourceUrl ?? product.sourceId ?? `${product.originalName}::${product.quantityText}`}`;
+}
+
+function dedupeScrapeResult(result: ScrapeResult) {
+  const byKey = new Map<string, ScrapedProduct>();
+
+  for (const product of result.products) {
+    const key = getProductKey(product);
+    const existing = byKey.get(key);
+
+    if (!existing) {
+      byKey.set(key, {
+        ...product,
+        categories: [...(product.categories ?? [])],
+      });
+      continue;
+    }
+
+    existing.categories = Array.from(new Set([...(existing.categories ?? []), ...(product.categories ?? [])]));
+    existing.dealText = existing.dealText ?? product.dealText;
+    existing.isDealActive = existing.isDealActive || product.isDealActive;
+    existing.currentUnitPrice = existing.currentUnitPrice ?? product.currentUnitPrice;
+    existing.imageUrl = existing.imageUrl ?? product.imageUrl;
+  }
+
+  return {
+    ...result,
+    products: Array.from(byKey.values()),
+  } satisfies ScrapeResult;
+}
+
 async function upsertProduct(product: ScrapedProduct) {
   const names = {
     english: product.genericNameEn ?? product.originalName.toLowerCase(),
@@ -297,7 +329,7 @@ async function getScrapeResults(
 
   for (const entry of settled) {
     if (entry.status === "fulfilled") {
-      results.push(entry.value);
+      results.push(dedupeScrapeResult(entry.value));
       continue;
     }
 
@@ -372,7 +404,9 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
       store.currentCategory = event.category ?? store.currentCategory;
       store.currentMessage = event.message;
       store.pagesProcessed += event.pagesProcessed ?? 0;
-      store.pagesExpected = event.pagesExpected ?? store.pagesExpected;
+      if (event.pagesExpected !== undefined) {
+        store.pagesExpected = (store.pagesExpected ?? 0) + event.pagesExpected;
+      }
       store.categoriesDone = event.categoriesDone ?? store.categoriesDone;
       store.categoriesTotal = event.categoriesTotal ?? store.categoriesTotal;
       store.itemsFound += event.itemsDiscovered ?? 0;
