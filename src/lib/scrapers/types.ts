@@ -5,6 +5,7 @@ export type ScrapedProduct = {
   originalName: string;
   genericNameEn?: string;
   genericNameEs?: string;
+  sourceId?: string;
   quantityText: string;
   unitAmount?: number;
   normalizedUnit?: string;

@@ -1,5 +1,5 @@
 import { FetchStatus } from "@prisma/client";
-import { generateGenericNames } from "@/lib/ai/generic-name";
+import { generateGenericNamesBatch } from "@/lib/ai/generic-name";
 import { prisma } from "@/lib/db";
 import { scrapeAlbertHeijn } from "@/lib/scrapers/ah";
 import { scrapeJumbo } from "@/lib/scrapers/jumbo";
@@ -7,22 +7,62 @@ import { scrapeMockStores } from "@/lib/scrapers/mock";
 import type { ScrapeResult, ScrapedProduct } from "@/lib/scrapers/types";
 import { slugify } from "@/lib/utils";
 
+async function enrichProducts(results: ScrapeResult[]) {
+  const unresolvedProducts = results.flatMap((result) => result.products).filter((product) => !product.genericNameEn || !product.genericNameEs);
+  const names = await generateGenericNamesBatch(unresolvedProducts.map((product) => product.originalName));
+
+  for (const product of unresolvedProducts) {
+    const enriched = names.get(product.originalName);
+
+    if (enriched) {
+      product.genericNameEn = enriched.english;
+      product.genericNameEs = enriched.spanish;
+    }
+  }
+}
+
 async function upsertProduct(product: ScrapedProduct) {
-  const english = product.genericNameEn;
-  const spanish = product.genericNameEs;
-  const names = english && spanish ? { english, spanish } : await generateGenericNames(product.originalName);
+  const names = {
+    english: product.genericNameEn ?? product.originalName.toLowerCase(),
+    spanish: product.genericNameEs ?? product.originalName.toLowerCase(),
+  };
 
   const existing = await prisma.product.findFirst({
     where: {
       supermarket: product.supermarket,
-      originalName: product.originalName,
-      quantityText: product.quantityText,
+      OR: [
+        ...(product.sourceUrl
+          ? [
+              {
+                sourceUrl: product.sourceUrl,
+              },
+            ]
+          : []),
+        {
+          originalName: product.originalName,
+          quantityText: product.quantityText,
+        },
+      ],
+    },
+    include: {
+      categories: {
+        include: {
+          category: true,
+        },
+      },
     },
   });
 
-  const categoryRecords = product.categories?.length
+  const mergedCategoryLabels = Array.from(
+    new Set([
+      ...(existing?.categories.map((entry) => entry.category.label) ?? []),
+      ...(product.categories ?? []),
+    ]),
+  );
+
+  const categoryRecords = mergedCategoryLabels.length
     ? await Promise.all(
-        product.categories.map((label) =>
+        mergedCategoryLabels.map((label) =>
           prisma.category.upsert({
             where: { slug: slugify(label) },
             update: { label },
@@ -127,6 +167,7 @@ export async function runScrapeJob() {
 
   try {
     const results = await getScrapeResults();
+    await enrichProducts(results);
     let itemsFetched = 0;
     let itemsCreated = 0;
     let itemsUpdated = 0;
