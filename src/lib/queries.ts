@@ -1,6 +1,15 @@
 import { prisma } from "@/lib/db";
 import type { FetchRunSummary, ProductCardData } from "@/lib/types";
 
+function isMissingTableError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "P2021" || error.code === "P2022")
+  );
+}
+
 function percentageChange(current: number, previous: number | null) {
   if (!previous || previous === 0) {
     return null;
@@ -25,21 +34,31 @@ function nearestHistoryPrice(
 }
 
 export async function getProducts(): Promise<ProductCardData[]> {
-  const products = await prisma.product.findMany({
-    include: {
-      categories: {
-        include: {
-          category: true,
+  let products;
+
+  try {
+    products = await prisma.product.findMany({
+      include: {
+        categories: {
+          include: {
+            category: true,
+          },
+        },
+        priceHistory: {
+          orderBy: {
+            capturedAt: "desc",
+          },
         },
       },
-      priceHistory: {
-        orderBy: {
-          capturedAt: "desc",
-        },
-      },
-    },
-    orderBy: [{ genericNameEn: "asc" }, { supermarket: "asc" }],
-  });
+      orderBy: [{ genericNameEn: "asc" }, { supermarket: "asc" }],
+    });
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return [];
+    }
+
+    throw error;
+  }
 
   return products.map((product) => {
     const dayPrice = nearestHistoryPrice(product.priceHistory, 1);
@@ -74,12 +93,22 @@ export async function getProducts(): Promise<ProductCardData[]> {
 }
 
 export async function getFetchRuns(): Promise<FetchRunSummary[]> {
-  const runs = await prisma.fetchRun.findMany({
-    orderBy: {
-      startedAt: "desc",
-    },
-    take: 10,
-  });
+  let runs;
+
+  try {
+    runs = await prisma.fetchRun.findMany({
+      orderBy: {
+        startedAt: "desc",
+      },
+      take: 10,
+    });
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return [];
+    }
+
+    throw error;
+  }
 
   return runs.map((run) => ({
     id: run.id,
@@ -90,27 +119,37 @@ export async function getFetchRuns(): Promise<FetchRunSummary[]> {
     itemsFetched: run.itemsFetched,
     itemsCreated: run.itemsCreated,
     itemsUpdated: run.itemsUpdated,
-    itemsDiscovered: run.itemsDiscovered,
-    itemsExpected: run.itemsExpected,
-    pagesProcessed: run.pagesProcessed,
-    pagesExpected: run.pagesExpected,
-    categoriesDone: run.categoriesDone,
-    categoriesTotal: run.categoriesTotal,
-    currentStore: run.currentStore,
-    currentCategory: run.currentCategory,
-    currentMessage: run.currentMessage,
-    progressPercent: run.progressPercent,
-    warningCount: run.warningCount,
+    itemsDiscovered: asFetchRunSummaryRow(run).itemsDiscovered,
+    itemsExpected: asFetchRunSummaryRow(run).itemsExpected,
+    pagesProcessed: asFetchRunSummaryRow(run).pagesProcessed,
+    pagesExpected: asFetchRunSummaryRow(run).pagesExpected,
+    categoriesDone: asFetchRunSummaryRow(run).categoriesDone,
+    categoriesTotal: asFetchRunSummaryRow(run).categoriesTotal,
+    currentStore: asFetchRunSummaryRow(run).currentStore,
+    currentCategory: asFetchRunSummaryRow(run).currentCategory,
+    currentMessage: asFetchRunSummaryRow(run).currentMessage,
+    progressPercent: asFetchRunSummaryRow(run).progressPercent,
+    warningCount: asFetchRunSummaryRow(run).warningCount,
     errorMessage: run.errorMessage,
   }));
 }
 
 export async function getLatestFetchRun(): Promise<FetchRunSummary | null> {
-  const run = await prisma.fetchRun.findFirst({
-    orderBy: {
-      startedAt: "desc",
-    },
-  });
+  let run;
+
+  try {
+    run = await prisma.fetchRun.findFirst({
+      orderBy: {
+        startedAt: "desc",
+      },
+    });
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
 
   if (!run) {
     return null;
@@ -125,17 +164,35 @@ export async function getLatestFetchRun(): Promise<FetchRunSummary | null> {
     itemsFetched: run.itemsFetched,
     itemsCreated: run.itemsCreated,
     itemsUpdated: run.itemsUpdated,
-    itemsDiscovered: run.itemsDiscovered,
-    itemsExpected: run.itemsExpected,
-    pagesProcessed: run.pagesProcessed,
-    pagesExpected: run.pagesExpected,
-    categoriesDone: run.categoriesDone,
-    categoriesTotal: run.categoriesTotal,
-    currentStore: run.currentStore,
-    currentCategory: run.currentCategory,
-    currentMessage: run.currentMessage,
-    progressPercent: run.progressPercent,
-    warningCount: run.warningCount,
+    itemsDiscovered: asFetchRunSummaryRow(run).itemsDiscovered,
+    itemsExpected: asFetchRunSummaryRow(run).itemsExpected,
+    pagesProcessed: asFetchRunSummaryRow(run).pagesProcessed,
+    pagesExpected: asFetchRunSummaryRow(run).pagesExpected,
+    categoriesDone: asFetchRunSummaryRow(run).categoriesDone,
+    categoriesTotal: asFetchRunSummaryRow(run).categoriesTotal,
+    currentStore: asFetchRunSummaryRow(run).currentStore,
+    currentCategory: asFetchRunSummaryRow(run).currentCategory,
+    currentMessage: asFetchRunSummaryRow(run).currentMessage,
+    progressPercent: asFetchRunSummaryRow(run).progressPercent,
+    warningCount: asFetchRunSummaryRow(run).warningCount,
     errorMessage: run.errorMessage,
   };
+}
+
+type FetchRunSummaryRow = {
+  itemsDiscovered: number;
+  itemsExpected: number | null;
+  pagesProcessed: number;
+  pagesExpected: number | null;
+  categoriesDone: number;
+  categoriesTotal: number | null;
+  currentStore: string | null;
+  currentCategory: string | null;
+  currentMessage: string | null;
+  progressPercent: number;
+  warningCount: number;
+};
+
+function asFetchRunSummaryRow(run: unknown) {
+  return run as unknown as FetchRunSummaryRow;
 }
