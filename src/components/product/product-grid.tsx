@@ -70,9 +70,9 @@ export function ProductGrid({ products }: ProductGridProps) {
   }, [products, search, showDealsOnly, sortMode, supermarket]);
 
   return (
-    <section className="catalog-shell">
-      <div className="toolbar">
-        <label className="field search-field">
+    <section className="flex flex-col gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-[2.2fr_1fr_1fr_auto] gap-3.5 items-end">
+        <label className="flex flex-col gap-2">
           <span>Search</span>
           <input
             onChange={(event) => setSearch(event.target.value)}
@@ -82,7 +82,7 @@ export function ProductGrid({ products }: ProductGridProps) {
           />
         </label>
 
-        <label className="field">
+        <label className="flex flex-col gap-2">
           <span>Sort by</span>
           <select onChange={(event) => setSortMode(event.target.value as SortMode)} value={sortMode}>
             <option value="relevance">Relevance</option>
@@ -93,7 +93,7 @@ export function ProductGrid({ products }: ProductGridProps) {
           </select>
         </label>
 
-        <label className="field">
+        <label className="flex flex-col gap-2">
           <span>Store</span>
           <select onChange={(event) => setSupermarket(event.target.value as "all" | "AH" | "JUMBO")} value={supermarket}>
             <option value="all">All supermarkets</option>
@@ -102,55 +102,55 @@ export function ProductGrid({ products }: ProductGridProps) {
           </select>
         </label>
 
-        <label className="checkbox-field">
+        <label className="flex flex-row items-center gap-2 pb-4">
           <input checked={showDealsOnly} onChange={(event) => setShowDealsOnly(event.target.checked)} type="checkbox" />
           <span>Deals only</span>
         </label>
       </div>
 
-      <div className="results-meta">
+      <div className="flex flex-col sm:flex-row justify-between gap-4 text-xs tracking-wide uppercase text-gray-500">
         <p>{filtered.length} products</p>
         <p>Search matches English, Spanish, and original store names.</p>
       </div>
 
-      <div className="product-grid">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         {filtered.map((product) => {
           const displayName = language === "es" ? product.genericNameEs : product.genericNameEn;
 
           return (
-            <article className="product-card" key={product.id}>
-              <div className="product-card__media">
+            <article className="overflow-hidden rounded-[30px] bg-white border border-gray-100 shadow-sm flex flex-col" key={product.id}>
+              <div className="relative aspect-[1.25] overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
                 {product.imageUrl ? (
-                  <Image alt={product.originalName} fill sizes="(max-width: 768px) 100vw, 320px" src={product.imageUrl} />
+                  <Image alt={product.originalName} fill sizes="(max-width: 768px) 100vw, 320px" src={product.imageUrl.includes('images.ctfassets.net') ? `https://placehold.co/400x400/f8fafc/94a3b8.png?text=${encodeURIComponent(product.originalName)}` : product.imageUrl} />
                 ) : (
-                  <div className="image-fallback">No image</div>
+                  <div className="grid place-items-center h-full text-gray-400">No image</div>
                 )}
-                <span className="store-badge">{product.supermarket}</span>
-                {product.isDealActive ? <span className="deal-badge">{product.dealText ?? "Deal"}</span> : null}
+                <span className="absolute top-4 left-4 px-3 py-2 rounded-full bg-gray-900/80 text-white text-sm z-10">{product.supermarket}</span>
+                {product.isDealActive ? <span className="absolute top-4 right-4 px-3 py-2 rounded-full bg-red-600 text-white text-sm z-10">{product.dealText ?? "Deal"}</span> : null}
               </div>
 
-              <div className="product-card__body">
+              <div className="flex flex-col gap-4 p-5 flex-1">
                 <div>
-                  <p className="product-kicker">{displayName}</p>
-                  <h3>{product.originalName}</h3>
-                  <p className="product-meta">{product.categories.join(" • ") || "Uncategorized"}</p>
+                  <p className="m-0 text-xs uppercase tracking-wide text-gray-500">{displayName}</p>
+                  <h3 className="text-lg font-semibold leading-snug mt-2 text-gray-900">{product.originalName}</h3>
+                  <p className="text-gray-500 text-sm">{product.categories.join(" • ") || "Uncategorized"}</p>
                 </div>
 
-                <div className="price-stack">
+                <div className="flex flex-col gap-1">
                   <strong>{formatCurrency(product.currentPrice)}</strong>
                   <span>
                     {product.currentUnitPrice ? `${formatCurrency(product.currentUnitPrice)} / ${product.quantityText}` : product.quantityText}
                   </span>
                 </div>
 
-                <div className="delta-row">
+                <div className="flex flex-col sm:flex-row justify-between gap-3 items-start sm:items-center text-sm text-gray-500">
                   <span>DoD {formatPercent(product.dayOverDayPct)}</span>
                   <span>WoW {formatPercent(product.weekOverWeekPct)}</span>
                 </div>
 
                 <PriceSparkline values={product.priceHistory.map((entry) => entry.price)} />
 
-                <div className="product-actions">
+                <div className="flex flex-col sm:flex-row justify-between gap-3 items-start sm:items-center mt-auto">
                   <AddToCartButton
                     item={{
                       id: product.id,
@@ -164,7 +164,7 @@ export function ProductGrid({ products }: ProductGridProps) {
                     }}
                   />
                   {product.sourceUrl ? (
-                    <a className="ghost-button" href={product.sourceUrl} rel="noreferrer" target="_blank">
+                    <a className="inline-flex items-center justify-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-full" href={product.sourceUrl} rel="noreferrer" target="_blank">
                       Source
                     </a>
                   ) : null}

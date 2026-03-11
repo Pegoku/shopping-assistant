@@ -23,17 +23,17 @@ export function AdminProductsTable({ products }: AdminProductsTableProps) {
   }
 
   return (
-    <div className="admin-table-shell">
-      {status ? <p className="admin-status">{status}</p> : null}
-      <table className="admin-table">
+    <div className="overflow-x-auto">
+      {status ? <p className="text-gray-500">{status}</p> : null}
+      <table className="w-full border-collapse text-sm">
         <thead>
           <tr>
-            <th>Product</th>
-            <th>Store</th>
-            <th>Price</th>
-            <th>Deal</th>
-            <th>Unit</th>
-            <th>Save</th>
+            <th className="p-3 border-b border-gray-200 font-medium text-gray-600">Product</th>
+            <th className="p-3 border-b border-gray-200 font-medium text-gray-600">Store</th>
+            <th className="p-3 border-b border-gray-200 font-medium text-gray-600">Price</th>
+            <th className="p-3 border-b border-gray-200 font-medium text-gray-600">Deal</th>
+            <th className="p-3 border-b border-gray-200 font-medium text-gray-600">Unit</th>
+            <th className="p-3 border-b border-gray-200 font-medium text-gray-600">Save</th>
           </tr>
         </thead>
         <tbody>
@@ -58,12 +58,12 @@ function AdminRow({
 
   return (
     <tr>
-      <td>
+      <td className="p-3 border-b border-gray-200 text-gray-900 align-top">
         <strong>{product.originalName}</strong>
         <p>{product.genericNameEn} / {product.genericNameEs}</p>
       </td>
-      <td>{product.supermarket}</td>
-      <td>
+      <td className="p-3 border-b border-gray-200 text-gray-900 align-top">{product.supermarket}</td>
+      <td className="p-3 border-b border-gray-200 text-gray-900 align-top">
         <input
           min="0"
           onChange={(event) => setPrice(Number(event.target.value))}
@@ -72,12 +72,12 @@ function AdminRow({
           value={price}
         />
       </td>
-      <td>
+      <td className="p-3 border-b border-gray-200 text-gray-900 align-top">
         <input checked={deal} onChange={(event) => setDeal(event.target.checked)} type="checkbox" />
       </td>
-      <td>{product.quantityText}</td>
-      <td>
-        <button className="ghost-button" onClick={() => void onSave(product.id, price, deal)} type="button">
+      <td className="p-3 border-b border-gray-200 text-gray-900 align-top">{product.quantityText}</td>
+      <td className="p-3 border-b border-gray-200 text-gray-900 align-top">
+        <button className="inline-flex items-center justify-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-full" onClick={() => void onSave(product.id, price, deal)} type="button">
           Save
         </button>
       </td>

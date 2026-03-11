@@ -19,28 +19,29 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${displayFont.variable} ${bodyFont.variable}`}>
+      <body className={`${displayFont.variable} ${bodyFont.variable} antialiased bg-gray-50 text-gray-900 min-h-screen font-body`}>
         <LanguageProvider>
           <CartProvider>
-            <div className="app-shell">
-              <div className="background-orb background-orb--one" />
-              <div className="background-orb background-orb--two" />
+            <div className="relative flex flex-col min-h-screen">
+              <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/80 backdrop-blur-md">
+                <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+                  <Link href="/" className="flex flex-col items-start gap-0.5 group">
+                    <span className="font-display text-xl font-bold tracking-tight text-gray-900 group-hover:text-blue-600 transition-colors">Market Mirror</span>
+                    <small className="text-xs font-medium text-gray-500 uppercase tracking-wider">AH + Jumbo</small>
+                  </Link>
 
-              <header className="site-header">
-                <Link className="brand-mark" href="/">
-                  <span>Market Mirror</span>
-                  <small>AH + Jumbo intelligence</small>
-                </Link>
-
-                <nav className="site-nav">
-                  <Link href="/">Compare</Link>
-                  <Link href="/admin">Admin</Link>
-                  <CartLink />
-                  <LanguageToggle />
-                </nav>
+                  <nav className="flex items-center gap-4 sm:gap-6">
+                    <Link href="/" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">Compare</Link>
+                    <Link href="/admin" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">Admin</Link>
+                    <CartLink />
+                    <LanguageToggle />
+                  </nav>
+                </div>
               </header>
 
-              <main>{children}</main>
+              <main className="flex-1 mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+                {children}
+              </main>
             </div>
           </CartProvider>
         </LanguageProvider>

@@ -17,7 +17,7 @@ export async function scrapeMockStores(): Promise<ScrapeResult[]> {
           currentPrice: 2.31,
           currentUnitPrice: 2.31,
           imageUrl:
-            "https://images.ctfassets.net/0dkgxhks0leg/2uDb02Mo1gM7DjsP9R4y8r/63f3c9dc5024be0b6072546dff5c36b6/banana.png",
+            "https://placehold.co/400x400/f8fafc/94a3b8.png?text=Banana",
           sourceUrl: "https://www.ah.nl/",
           dealText: "2e halve prijs",
           isDealActive: true,
@@ -39,7 +39,7 @@ export async function scrapeMockStores(): Promise<ScrapeResult[]> {
           currentPrice: 2.12,
           currentUnitPrice: 2.12,
           imageUrl:
-            "https://images.ctfassets.net/0dkgxhks0leg/2uDb02Mo1gM7DjsP9R4y8r/63f3c9dc5024be0b6072546dff5c36b6/banana.png",
+            "https://placehold.co/400x400/f8fafc/94a3b8.png?text=Banana",
           sourceUrl: "https://www.jumbo.com/",
           isDealActive: false,
           categories: ["Fruit"],

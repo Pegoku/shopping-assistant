@@ -27,8 +27,8 @@ export function ForceFetchButton() {
   }
 
   return (
-    <div className="admin-fetch-box">
-      <button className="action-button" disabled={loading} onClick={onForceFetch} type="button">
+    <div className="flex flex-col justify-center gap-3">
+      <button className="px-4 py-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={loading} onClick={onForceFetch} type="button">
         {loading ? "Fetching..." : "Force fetch now"}
       </button>
       {message ? <p>{message}</p> : null}

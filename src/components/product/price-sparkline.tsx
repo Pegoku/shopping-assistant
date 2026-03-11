@@ -21,7 +21,7 @@ export function PriceSparkline({ values }: PriceSparklineProps) {
     .join(" ");
 
   return (
-    <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img">
+    <svg className="w-full h-11 text-teal-600" viewBox={`0 0 ${width} ${height}`} role="img">
       <polyline fill="none" points={points} stroke="currentColor" strokeWidth="3" />
     </svg>
   );
