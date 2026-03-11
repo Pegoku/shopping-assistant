@@ -113,44 +113,44 @@ export function ProductGrid({ products }: ProductGridProps) {
         <p>Search matches English, Spanish, and original store names.</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3.5">
         {filtered.map((product) => {
           const displayName = language === "es" ? product.genericNameEs : product.genericNameEn;
 
           return (
-            <article className="overflow-hidden rounded-[30px] bg-white border border-gray-100 shadow-sm flex flex-col" key={product.id}>
-              <div className="relative aspect-[1.25] overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+            <article className="overflow-hidden rounded-2xl bg-white border border-gray-100 shadow-sm flex flex-col" key={product.id}>
+              <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
                 {product.imageUrl ? (
-                  <Image alt={product.originalName} fill sizes="(max-width: 768px) 100vw, 320px" src={product.imageUrl.includes('images.ctfassets.net') ? `https://placehold.co/400x400/f8fafc/94a3b8.png?text=${encodeURIComponent(product.originalName)}` : product.imageUrl} />
+                  <Image alt={product.originalName} fill sizes="(max-width: 768px) 50vw, 220px" src={product.imageUrl.includes('images.ctfassets.net') ? `https://placehold.co/400x400/f8fafc/94a3b8.png?text=${encodeURIComponent(product.originalName)}` : product.imageUrl} />
                 ) : (
-                  <div className="grid place-items-center h-full text-gray-400">No image</div>
+                  <div className="grid place-items-center h-full text-xs text-gray-400">No image</div>
                 )}
-                <span className="absolute top-4 left-4 px-3 py-2 rounded-full bg-gray-900/80 text-white text-sm z-10">{product.supermarket}</span>
-                {product.isDealActive ? <span className="absolute top-4 right-4 px-3 py-2 rounded-full bg-red-600 text-white text-sm z-10">{product.dealText ?? "Deal"}</span> : null}
+                <span className="absolute top-2 left-2 px-2 py-1 rounded-full bg-gray-900/80 text-white text-[10px] z-10">{product.supermarket}</span>
+                {product.isDealActive ? <span className="absolute top-2 right-2 max-w-[55%] truncate px-2 py-1 rounded-full bg-red-600 text-white text-[10px] z-10">{product.dealText ?? "Deal"}</span> : null}
               </div>
 
-              <div className="flex flex-col gap-4 p-5 flex-1">
-                <div>
-                  <p className="m-0 text-xs uppercase tracking-wide text-gray-500">{displayName}</p>
-                  <h3 className="text-lg font-semibold leading-snug mt-2 text-gray-900">{product.originalName}</h3>
-                  <p className="text-gray-500 text-sm">{product.categories.join(" • ") || "Uncategorized"}</p>
+              <div className="flex flex-col gap-3 p-3.5 flex-1">
+                <div className="min-w-0">
+                  <p className="m-0 text-[10px] uppercase tracking-wide text-gray-500 truncate">{displayName}</p>
+                  <h3 className="text-sm font-semibold leading-snug mt-1 text-gray-900 line-clamp-2">{product.originalName}</h3>
+                  <p className="text-gray-500 text-xs truncate">{product.categories.join(" • ") || "Uncategorized"}</p>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <strong>{formatCurrency(product.currentPrice)}</strong>
-                  <span>
+                <div className="flex flex-col gap-0.5">
+                  <strong className="text-base">{formatCurrency(product.currentPrice)}</strong>
+                  <span className="text-xs text-gray-600">
                     {product.currentUnitPrice ? `${formatCurrency(product.currentUnitPrice)} / ${product.quantityText}` : product.quantityText}
                   </span>
                 </div>
 
-                <div className="flex flex-col sm:flex-row justify-between gap-3 items-start sm:items-center text-sm text-gray-500">
+                <div className="flex flex-col gap-1 text-xs text-gray-500">
                   <span>DoD {formatPercent(product.dayOverDayPct)}</span>
                   <span>WoW {formatPercent(product.weekOverWeekPct)}</span>
                 </div>
 
                 <PriceSparkline values={product.priceHistory.map((entry) => entry.price)} />
 
-                <div className="flex flex-col sm:flex-row justify-between gap-3 items-start sm:items-center mt-auto">
+                <div className="flex flex-col gap-2 mt-auto">
                   <AddToCartButton
                     item={{
                       id: product.id,
@@ -164,7 +164,7 @@ export function ProductGrid({ products }: ProductGridProps) {
                     }}
                   />
                   {product.sourceUrl ? (
-                    <a className="inline-flex items-center justify-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-full" href={product.sourceUrl} rel="noreferrer" target="_blank">
+                    <a className="inline-flex items-center justify-center px-3 py-2 text-xs bg-gray-50 hover:bg-gray-100 transition-colors rounded-full" href={product.sourceUrl} rel="noreferrer" target="_blank">
                       Source
                     </a>
                   ) : null}
