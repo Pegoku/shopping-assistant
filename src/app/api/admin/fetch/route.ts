@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getLatestFetchRun } from "@/lib/queries";
+import { getFetchRuns, getLatestFetchRun } from "@/lib/queries";
 import { createScrapeRun, startConfiguredScrapeRunInBackground } from "@/lib/scrapers";
 
 type FetchRequestBody = {
@@ -9,8 +9,8 @@ type FetchRequestBody = {
 };
 
 export async function GET() {
-  const run = await getLatestFetchRun();
-  return NextResponse.json({ ok: true, run });
+  const [run, runs] = await Promise.all([getLatestFetchRun(), getFetchRuns()]);
+  return NextResponse.json({ ok: true, run, runs });
 }
 
 export async function POST(request: Request) {

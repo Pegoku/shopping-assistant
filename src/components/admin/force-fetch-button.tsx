@@ -13,7 +13,15 @@ type CategoryPayload = {
   jumboCategories: CategoryOption[];
 };
 
-export function ForceFetchButton({ initialRun }: { initialRun: FetchRunSummary | null }) {
+export function ForceFetchButton({
+  initialRun,
+  onRunChange,
+  onRunsChange,
+}: {
+  initialRun: FetchRunSummary | null;
+  onRunChange?: (run: FetchRunSummary | null) => void;
+  onRunsChange?: (runs: FetchRunSummary[]) => void;
+}) {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"full" | "partial">("full");
@@ -30,12 +38,14 @@ export function ForceFetchButton({ initialRun }: { initialRun: FetchRunSummary |
 
     const interval = window.setInterval(async () => {
       const response = await fetch("/api/admin/fetch", { cache: "no-store" });
-      const payload = (await response.json()) as { run: FetchRunSummary | null };
+      const payload = (await response.json()) as { run: FetchRunSummary | null; runs: FetchRunSummary[] };
       setRun(payload.run);
+      onRunChange?.(payload.run);
+      onRunsChange?.(payload.runs);
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [run]);
+  }, [onRunChange, onRunsChange, run]);
 
   async function loadCategories() {
     if (categories || categoriesLoading) {
@@ -72,7 +82,8 @@ export function ForceFetchButton({ initialRun }: { initialRun: FetchRunSummary |
         setMessage("Fetch failed to start");
       } else {
         setMessage(payload.alreadyRunning ? "A scrape is already running." : "Fetch started. Live progress updates every second.");
-        setRun((current) =>
+        setRun((current) => {
+          const nextRun =
           current && payload.alreadyRunning
             ? current
             : {
@@ -96,8 +107,10 @@ export function ForceFetchButton({ initialRun }: { initialRun: FetchRunSummary |
                 progressPercent: 0,
                 warningCount: 0,
                 errorMessage: null,
-              },
-        );
+              };
+          onRunChange?.(nextRun);
+          return nextRun;
+        });
       }
     } catch {
       setMessage("Fetch failed to start");
