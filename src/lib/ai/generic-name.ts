@@ -64,6 +64,27 @@ async function callAi<T>(messages: Array<{ role: "system" | "user"; content: str
   }
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+) {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => runWorker()));
+
+  return results;
+}
+
 export async function generateGenericNames(originalName: string): Promise<GenericNames> {
   const parsed = await callAi<Partial<GenericNames>>([
     {
@@ -103,20 +124,25 @@ export async function generateGenericNamesBatch(
     return new Map<string, GenericNames>();
   }
 
-  const batchSize = Number(process.env.AI_ENRICHMENT_BATCH_SIZE ?? 30);
+  const batchSize = Number(process.env.AI_ENRICHMENT_BATCH_SIZE ?? 50);
+  const concurrency = Math.max(1, Number(process.env.AI_ENRICHMENT_CONCURRENCY ?? 4));
   const results = new Map<string, GenericNames>();
-  const totalBatches = Math.ceil(uniqueNames.length / batchSize);
+  const batches = Array.from({ length: Math.ceil(uniqueNames.length / batchSize) }, (_, index) => ({
+    batch: uniqueNames.slice(index * batchSize, index * batchSize + batchSize),
+    batchIndex: index + 1,
+  }));
+  const totalBatches = batches.length;
+  let processedNames = 0;
 
-  for (let index = 0; index < uniqueNames.length; index += batchSize) {
-    const batch = uniqueNames.slice(index, index + batchSize);
-    const batchIndex = Math.floor(index / batchSize) + 1;
+  const batchResults = await mapWithConcurrency(batches, concurrency, async ({ batch, batchIndex }) => {
     await onProgress?.({
       totalNames: uniqueNames.length,
-      processedNames: index,
+      processedNames,
       batchIndex,
       totalBatches,
       batchSize: batch.length,
     });
+
     const prompt = batch.map((name, itemIndex) => `${itemIndex + 1}. ${name}`).join("\n");
     const parsed = await callAi<{
       items?: Array<{
@@ -137,22 +163,32 @@ export async function generateGenericNamesBatch(
     ]);
 
     const parsedItems = parsed?.items ?? [];
+    const mapped = new Map<string, GenericNames>();
 
     for (const name of batch) {
       const found = parsedItems.find((item) => item.originalName?.trim() === name);
-      results.set(name, {
+      mapped.set(name, {
         english: found?.english?.trim().toLowerCase() || fallbackNames(name).english,
         spanish: found?.spanish?.trim().toLowerCase() || fallbackNames(name).spanish,
       });
     }
 
+    processedNames += batch.length;
     await onProgress?.({
       totalNames: uniqueNames.length,
-      processedNames: Math.min(index + batch.length, uniqueNames.length),
+      processedNames: Math.min(processedNames, uniqueNames.length),
       batchIndex,
       totalBatches,
       batchSize: batch.length,
     });
+
+    return mapped;
+  });
+
+  for (const batchResult of batchResults) {
+    for (const [name, genericNames] of batchResult.entries()) {
+      results.set(name, genericNames);
+    }
   }
 
   return results;
