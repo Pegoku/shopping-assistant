@@ -115,8 +115,7 @@ export function ProductGrid({ products }: ProductGridProps) {
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3.5">
         {filtered.map((product) => {
-          const displayName = product.genericNameEn;
-          const secondaryName = language === "es" ? product.genericNameEs : product.genericNameEn;
+          const displayName = language === "es" ? product.genericNameEs : product.genericNameEn;
 
           return (
             <article className="overflow-hidden rounded-2xl bg-white border border-gray-100 shadow-sm flex flex-col" key={product.id}>
@@ -132,20 +131,17 @@ export function ProductGrid({ products }: ProductGridProps) {
 
               <div className="flex flex-col gap-3 p-3.5 flex-1">
                 <div className="min-w-0">
-                  <p className="m-0 text-[10px] tracking-wide text-gray-500 truncate">{product.originalName} · {secondaryName}</p>
+                  <p className="m-0 text-[10px] tracking-wide text-gray-500 truncate">{product.originalName}</p>
                   <h3 className="text-sm font-semibold leading-snug mt-1 text-gray-900 line-clamp-2 capitalize">{displayName}</h3>
                   <p className="text-gray-500 text-xs truncate">{product.categories.join(" • ") || "Uncategorized"}</p>
                 </div>
 
                 <div className="flex flex-col gap-0.5">
-                  <strong className="text-base">{formatCurrency(product.currentPrice)}</strong>
+                  <strong className="text-base">{formatCurrency(product.currentPrice)} · {product.quantityText}</strong>
                   <span className="text-xs text-gray-600">
                     {product.currentUnitPrice
                       ? `${formatCurrency(product.currentUnitPrice)}/${formatUnitLabel(product.normalizedUnit)}`
                       : product.quantityText}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {formatCurrency(product.currentPrice)} · {product.quantityText}
                   </span>
                 </div>
 
