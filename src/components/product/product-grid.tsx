@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddToCartButton } from "@/components/product/add-to-cart-button";
 import { PriceSparkline } from "@/components/product/price-sparkline";
 import { useLanguage } from "@/components/providers/language-provider";
@@ -23,6 +23,7 @@ export function ProductGrid({ initialResult }: ProductGridProps) {
   const [result, setResult] = useState<ProductQueryResult>(initialResult);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({
@@ -66,7 +67,7 @@ export function ProductGrid({ initialResult }: ProductGridProps) {
     };
   }, [queryString]);
 
-  async function loadMore() {
+  const loadMore = useCallback(async () => {
     if (!result.hasMore || loadingMore || result.nextOffset === null) {
       return;
     }
@@ -85,7 +86,32 @@ export function ProductGrid({ initialResult }: ProductGridProps) {
     } finally {
       setLoadingMore(false);
     }
-  }
+  }, [loadingMore, queryString, result.hasMore, result.nextOffset]);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+
+    if (!target || !result.hasMore) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+
+        if (entry?.isIntersecting && !loadingMore && !loading) {
+          void loadMore();
+        }
+      },
+      {
+        rootMargin: "600px 0px",
+      },
+    );
+
+    observer.observe(target);
+
+    return () => observer.disconnect();
+  }, [loadMore, loading, loadingMore, result.hasMore, result.nextOffset]);
 
   return (
     <section className="flex flex-col gap-5">
@@ -138,7 +164,7 @@ export function ProductGrid({ initialResult }: ProductGridProps) {
       </div>
 
       {result.hasMore ? (
-        <div className="flex justify-center pt-2">
+        <div className="flex justify-center pt-2" ref={loadMoreRef}>
           <button
             className="px-5 py-3 bg-gray-900 text-white rounded-full hover:bg-gray-800 transition-colors disabled:opacity-50"
             disabled={loadingMore}
