@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getFetchRuns, getLatestFetchRun } from "@/lib/queries";
-import { createScrapeRun, startConfiguredScrapeRunInBackground } from "@/lib/scrapers";
+import { cancelScrapeRun, createScrapeRun, startConfiguredScrapeRunInBackground } from "@/lib/scrapers";
 
 type FetchRequestBody = {
   mode?: "full" | "partial";
@@ -33,5 +33,13 @@ export async function POST(request: Request) {
     alreadyRunning,
     mode,
     sourceMode,
+  });
+}
+
+export async function DELETE() {
+  const result = await cancelScrapeRun();
+
+  return NextResponse.json(result, {
+    status: result.ok ? 200 : 404,
   });
 }

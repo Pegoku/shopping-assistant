@@ -52,6 +52,24 @@ type RunProgressState = {
 
 const activeRuns = new Set<string>();
 
+class ScrapeCancelledError extends Error {
+  constructor() {
+    super("Scrape cancelled by admin");
+    this.name = "ScrapeCancelledError";
+  }
+}
+
+async function throwIfCancelled(runId: string) {
+  const run = await prisma.fetchRun.findUnique({
+    where: { id: runId },
+    select: { status: true },
+  });
+
+  if (run?.status === FetchStatus.CANCELLED) {
+    throw new ScrapeCancelledError();
+  }
+}
+
 function emptyProgressState(): RunProgressState {
   return {
     pagesProcessed: 0,
@@ -91,6 +109,7 @@ function emptyProgressState(): RunProgressState {
 }
 
 async function updateRunProgress(runId: string, state: RunProgressState) {
+  await throwIfCancelled(runId);
   const ahCategoryPercent = state.stores.AH.categoriesTotal
     ? state.stores.AH.categoriesDone / state.stores.AH.categoriesTotal
     : 0;
@@ -153,8 +172,8 @@ async function enrichProducts(results: ScrapeResult[], runId: string, progressSt
     progressState.currentCategory = null;
     progressState.currentMessage =
       progress.processedNames >= progress.totalNames
-        ? `AI finished translating ${progress.totalNames} product names into generic English/Spanish labels`
-        : `AI translating product names to generic English/Spanish labels - batch ${progress.batchIndex}/${progress.totalBatches} (${progress.processedNames}/${progress.totalNames} done)`;
+        ? `AI finished translating ${progress.totalNames} unique product names from ${progress.totalProducts} found products (${progress.cachedNames} cached)`
+        : `AI translating unique product names to generic English/Spanish labels - batch ${progress.batchIndex}/${progress.totalBatches} (${progress.processedNames}/${progress.totalNames} unique done, ${progress.cachedNames} cached, ${progress.totalProducts} products found)`;
     await updateRunProgress(runId, progressState);
   });
 
@@ -336,10 +355,13 @@ async function getScrapeResults(
     scrapeAlbertHeijn(reportProgress, options?.mode === "partial" ? options.ahCategoryPaths : undefined),
     scrapeJumbo(reportProgress, options?.mode === "partial" ? options.jumboCategoryPaths : undefined),
   ]);
+  const stores: Array<"AH" | "JUMBO"> = ["AH", "JUMBO"];
   const results: ScrapeResult[] = [];
   let hadWarnings = false;
 
-  for (const entry of settled) {
+  for (const [index, entry] of settled.entries()) {
+    const store = stores[index];
+
     if (entry.status === "fulfilled") {
       results.push(dedupeScrapeResult(entry.value));
       continue;
@@ -347,8 +369,12 @@ async function getScrapeResults(
 
     hadWarnings = true;
     const message = entry.reason instanceof Error ? entry.reason.message : "Unknown scraper failure";
-    console.error(`[SCRAPE] Store scraper failed: ${message}`);
-    await reportProgress({ message: `Store scraper failed: ${message}`, warning: true });
+    console.error(`[SCRAPE] ${store} scraper failed: ${message}`);
+    await reportProgress({
+      store,
+      message: `${store} scraper failed: ${message}`,
+      warning: true,
+    });
   }
 
   return { results, hadWarnings };
@@ -380,6 +406,35 @@ export async function createScrapeRun(sourceMode = process.env.SCRAPER_MODE ?? "
   return { runId: run.id, alreadyRunning: false };
 }
 
+export async function cancelScrapeRun() {
+  const run = await prisma.fetchRun.findFirst({
+    where: {
+      status: FetchStatus.PENDING,
+      completedAt: null,
+    },
+    orderBy: {
+      startedAt: "desc",
+    },
+  });
+
+  if (!run) {
+    return { ok: false, message: "No running fetch to cancel" };
+  }
+
+  await prisma.fetchRun.update({
+    where: { id: run.id },
+    data: {
+      status: FetchStatus.CANCELLED,
+      currentMessage: "Cancellation requested by admin",
+      completedAt: new Date(),
+    },
+  });
+
+  activeRuns.delete(run.id);
+
+  return { ok: true, runId: run.id };
+}
+
 export function startConfiguredScrapeRunInBackground(runId: string, options?: ScrapeJobOptions) {
   if (activeRuns.has(runId)) {
     return;
@@ -400,6 +455,7 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
   let hadWarnings = false;
 
   const reportProgress = async (event: ScrapeProgressEvent) => {
+    await throwIfCancelled(runId);
     const storeKey = event.store ?? null;
     progressState.currentStore = event.store ?? progressState.currentStore;
     progressState.currentCategory = event.category ?? progressState.currentCategory;
@@ -435,6 +491,7 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
   };
 
   try {
+    await throwIfCancelled(runId);
     await prisma.fetchRun.update({
       where: { id: runId },
       data: {
@@ -448,6 +505,7 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
     hadWarnings = hadWarnings || scraperWarnings;
     console.log(`[SCRAPE] Raw results -> ${results.map((result) => `${result.supermarket}:${result.products.length}`).join(", ")}`);
 
+    await throwIfCancelled(runId);
     await enrichProducts(results, runId, progressState);
 
     let itemsFetched = 0;
@@ -455,12 +513,14 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
     let itemsUpdated = 0;
 
     for (const result of results) {
+      await throwIfCancelled(runId);
       progressState.currentStore = result.supermarket;
       progressState.currentCategory = null;
       progressState.currentMessage = `Persisting ${result.products.length} ${result.supermarket} products`;
       await updateRunProgress(runId, progressState);
 
       for (const product of result.products) {
+        await throwIfCancelled(runId);
         const summary = await upsertProduct(product);
         itemsFetched += 1;
         itemsCreated += summary.created;
@@ -515,6 +575,35 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
       partial: hadWarnings,
     };
   } catch (error) {
+    if (error instanceof ScrapeCancelledError) {
+      await prisma.fetchRun.update({
+        where: { id: runId },
+        data: {
+          status: FetchStatus.CANCELLED,
+          currentMessage: "Fetch cancelled by admin",
+          itemsDiscovered: progressState.itemsDiscovered,
+          itemsExpected: progressState.itemsExpected,
+          pagesProcessed: progressState.pagesProcessed,
+          pagesExpected: progressState.pagesExpected,
+          categoriesDone: progressState.categoriesDone,
+          categoriesTotal: progressState.categoriesTotal,
+          currentStore: progressState.currentStore,
+          currentCategory: progressState.currentCategory,
+          progressPercent: progressState.progressPercent,
+          warningCount: progressState.warningCount,
+          completedAt: new Date(),
+        },
+      });
+
+      return {
+        ok: false,
+        runId,
+        error: "Fetch cancelled by admin",
+        cancelled: true,
+        sourceMode,
+      };
+    }
+
     const message = error instanceof Error ? error.message : "Unknown scrape failure";
     console.error(`[SCRAPE] Job failed: ${message}`);
     await prisma.fetchRun.update({

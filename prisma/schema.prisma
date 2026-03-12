@@ -16,6 +16,7 @@ enum FetchStatus {
   PENDING
   SUCCESS
   PARTIAL
+  CANCELLED
   FAILED
 }
 

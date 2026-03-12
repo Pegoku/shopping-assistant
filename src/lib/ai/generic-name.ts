@@ -35,6 +35,8 @@ async function callAi<T>(messages: Array<{ role: "system" | "user"; content: str
     body: JSON.stringify({
       model,
       messages,
+      temperature: 0,
+      max_tokens: 900,
       response_format: {
         type: "json_object",
       },
@@ -113,8 +115,11 @@ export async function generateGenericNames(originalName: string): Promise<Generi
 export async function generateGenericNamesBatch(
   originalNames: string[],
   onProgress?: (progress: {
+    totalProducts: number;
     totalNames: number;
     processedNames: number;
+    cachedNames: number;
+    uncachedNames: number;
     batchIndex: number;
     totalBatches: number;
     batchSize: number;
@@ -147,8 +152,11 @@ export async function generateGenericNamesBatch(
 
   if (!uncachedNames.length) {
     await onProgress?.({
+      totalProducts: originalNames.length,
       totalNames: uniqueNames.length,
       processedNames: uniqueNames.length,
+      cachedNames: cachedRows.length,
+      uncachedNames: 0,
       batchIndex: 0,
       totalBatches: 0,
       batchSize: 0,
@@ -167,8 +175,11 @@ export async function generateGenericNamesBatch(
 
   const batchResults = await mapWithConcurrency(batches, concurrency, async ({ batch, batchIndex }) => {
     await onProgress?.({
+      totalProducts: originalNames.length,
       totalNames: uniqueNames.length,
       processedNames,
+      cachedNames: cachedRows.length,
+      uncachedNames: uncachedNames.length,
       batchIndex,
       totalBatches,
       batchSize: batch.length,
@@ -185,13 +196,15 @@ export async function generateGenericNamesBatch(
       {
         role: "system",
         content:
-          "You normalize grocery product names. Return JSON with an items array. Each item must include originalName, english, and spanish. english and spanish should be short generic grocery names useful for search, not full marketing titles.",
+          "You normalize grocery product names. Return JSON with an items array. Each item must include originalName, english, and spanish. english and spanish must be short labels useful for shopping search, not full marketing titles. No reasoning, no explanation, no extra keys.",
       },
       {
         role: "user",
         content: `Normalize these grocery product names:\n${prompt}`,
       },
     ]);
+
+    console.log(`[AI] Batch ${batchIndex}/${totalBatches} raw output: ${JSON.stringify(parsed?.items ?? [])}`);
 
     const parsedItems = parsed?.items ?? [];
     const mapped = new Map<string, GenericNames>();
@@ -226,8 +239,11 @@ export async function generateGenericNamesBatch(
 
     processedNames += batch.length;
     await onProgress?.({
+      totalProducts: originalNames.length,
       totalNames: uniqueNames.length,
       processedNames: Math.min(processedNames, uniqueNames.length),
+      cachedNames: cachedRows.length,
+      uncachedNames: uncachedNames.length,
       batchIndex,
       totalBatches,
       batchSize: batch.length,

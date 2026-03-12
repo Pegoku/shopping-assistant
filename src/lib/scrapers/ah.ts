@@ -233,6 +233,26 @@ export async function scrapeAlbertHeijn(
   reportProgress?: ScrapeProgressReporter,
   selectedCategoryPaths?: string[],
 ): Promise<ScrapeResult> {
+  await reportProgress?.({
+    store: "AH",
+    message: "AH loading categories",
+    categoriesDone: 0,
+  });
+
+  if (selectedCategoryPaths && selectedCategoryPaths.length === 0) {
+    await reportProgress?.({
+      store: "AH",
+      message: "AH skipped - no categories selected",
+      categoriesDone: 0,
+      categoriesTotal: 0,
+    });
+
+    return {
+      supermarket: Supermarket.AH,
+      products: [],
+    };
+  }
+
   const categories = await discoverAlbertHeijnCategories();
   const categoryLimit = Number(process.env.AH_CATEGORY_LIMIT ?? "");
   const filteredCategories = selectedCategoryPaths?.length

@@ -177,6 +177,26 @@ export async function scrapeJumbo(
   reportProgress?: ScrapeProgressReporter,
   selectedCategoryPaths?: string[],
 ): Promise<ScrapeResult> {
+  await reportProgress?.({
+    store: "JUMBO",
+    message: "Jumbo loading categories",
+    categoriesDone: 0,
+  });
+
+  if (selectedCategoryPaths && selectedCategoryPaths.length === 0) {
+    await reportProgress?.({
+      store: "JUMBO",
+      message: "Jumbo skipped - no categories selected",
+      categoriesDone: 0,
+      categoriesTotal: 0,
+    });
+
+    return {
+      supermarket: Supermarket.JUMBO,
+      products: [],
+    };
+  }
+
   const categories = await discoverJumboCategories();
   const categoryLimit = Number(process.env.JUMBO_CATEGORY_LIMIT ?? "");
   const filteredCategories = selectedCategoryPaths?.length

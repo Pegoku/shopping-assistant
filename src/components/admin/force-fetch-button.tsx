@@ -123,6 +123,38 @@ export function ForceFetchButton({
     }
   }
 
+  async function onCancelFetch() {
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/fetch", {
+        method: "DELETE",
+      });
+      const payload = (await response.json()) as { ok: boolean; message?: string };
+
+      if (!response.ok || !payload.ok) {
+        setMessage(payload.message ?? "Cancel failed");
+      } else {
+        setMessage("Cancellation requested. The current fetch will stop shortly.");
+        const nextRun = run
+          ? {
+              ...run,
+              status: "CANCELLED",
+              currentMessage: "Cancellation requested by admin",
+              completedAt: new Date().toISOString(),
+            }
+          : null;
+        setRun(nextRun);
+        onRunChange?.(nextRun);
+      }
+    } catch {
+      setMessage("Cancel failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const isRunning = run?.status === "PENDING";
   const categoryCount = useMemo(
     () => ({ ah: selectedAh.length, jumbo: selectedJumbo.length }),
@@ -170,14 +202,27 @@ export function ForceFetchButton({
         </div>
       ) : null}
 
-      <button
-        className="px-4 py-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={loading || isRunning || (mode === "partial" && selectedAh.length === 0 && selectedJumbo.length === 0)}
-        onClick={onForceFetch}
-        type="button"
-      >
-        {isRunning ? "Fetch in progress..." : loading ? "Starting..." : mode === "full" ? "Start full fetch" : "Start partial fetch"}
-      </button>
+      <div className="flex flex-wrap gap-3">
+        <button
+          className="px-4 py-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={loading || isRunning || (mode === "partial" && selectedAh.length === 0 && selectedJumbo.length === 0)}
+          onClick={onForceFetch}
+          type="button"
+        >
+          {isRunning ? "Fetch in progress..." : loading ? "Starting..." : mode === "full" ? "Start full fetch" : "Start partial fetch"}
+        </button>
+
+        {isRunning ? (
+          <button
+            className="px-4 py-3 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading}
+            onClick={onCancelFetch}
+            type="button"
+          >
+            {loading ? "Cancelling..." : "Force cancel fetch"}
+          </button>
+        ) : null}
+      </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
         <div className="flex items-center justify-between gap-3 text-sm">
