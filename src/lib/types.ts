@@ -24,6 +24,24 @@ export type ProductCardData = {
   }>;
 };
 
+export type ProductSortMode = "relevance" | "price" | "unitPrice" | "dayChange" | "weekChange";
+
+export type ProductQueryInput = {
+  search?: string;
+  sort?: ProductSortMode;
+  supermarket?: "all" | "AH" | "JUMBO";
+  dealsOnly?: boolean;
+  offset?: number;
+  limit?: number;
+};
+
+export type ProductQueryResult = {
+  products: ProductCardData[];
+  total: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+};
+
 export type CartItem = {
   id: string;
   originalName: string;

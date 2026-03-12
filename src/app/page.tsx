@@ -4,7 +4,7 @@ import { getProducts } from "@/lib/queries";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const products = await getProducts();
+  const initialResult = await getProducts({ limit: 48 });
 
   return (
     <div className="flex flex-col gap-6">
@@ -16,7 +16,7 @@ export default async function HomePage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <span>Products tracked </span>
-            <strong>{products.length}</strong>
+            <strong>{initialResult.total}</strong>
           </div>
           <div>
             <span>Trend badges </span>
@@ -29,7 +29,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <ProductGrid products={products} />
+      <ProductGrid initialResult={initialResult} />
     </div>
   );
 }

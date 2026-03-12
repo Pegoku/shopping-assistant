@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/db";
-import type { FetchRunStoreSummary, FetchRunSummary, ProductCardData } from "@/lib/types";
+import type {
+  FetchRunStoreSummary,
+  FetchRunSummary,
+  ProductCardData,
+  ProductQueryInput,
+  ProductQueryResult,
+  ProductSortMode,
+} from "@/lib/types";
 
 function isMissingTableError(error: unknown) {
   return (
@@ -33,64 +40,149 @@ function nearestHistoryPrice(
   return null;
 }
 
-export async function getProducts(): Promise<ProductCardData[]> {
+function mapProductCard(product: {
+  id: string;
+  supermarket: "AH" | "JUMBO";
+  originalName: string;
+  genericNameEn: string;
+  genericNameEs: string;
+  quantityText: string;
+  normalizedUnit: string | null;
+  currentPrice: number;
+  currentUnitPrice: number | null;
+  imageUrl: string | null;
+  dealText: string | null;
+  isDealActive: boolean;
+  lastFetchedAt: Date | null;
+  sourceUrl: string | null;
+  categories: Array<{ category: { label: string } }>;
+  priceHistory: Array<{ capturedAt: Date; price: number }>;
+}): ProductCardData {
+  const dayPrice = nearestHistoryPrice(product.priceHistory, 1);
+  const weekPrice = nearestHistoryPrice(product.priceHistory, 7);
+
+  return {
+    id: product.id,
+    supermarket: product.supermarket,
+    originalName: product.originalName,
+    genericNameEn: product.genericNameEn,
+    genericNameEs: product.genericNameEs,
+    quantityText: product.quantityText,
+    normalizedUnit: product.normalizedUnit,
+    currentPrice: product.currentPrice,
+    currentUnitPrice: product.currentUnitPrice,
+    imageUrl: product.imageUrl,
+    dealText: product.dealText,
+    isDealActive: product.isDealActive,
+    categories: product.categories.map((item) => item.category.label),
+    lastFetchedAt: product.lastFetchedAt?.toISOString() ?? null,
+    dayOverDayPct: percentageChange(product.currentPrice, dayPrice),
+    weekOverWeekPct: percentageChange(product.currentPrice, weekPrice),
+    sourceUrl: product.sourceUrl,
+    priceHistory: product.priceHistory
+      .slice(0, 8)
+      .reverse()
+      .map((entry) => ({
+        capturedAt: entry.capturedAt.toISOString(),
+        price: entry.price,
+      })),
+  };
+}
+
+function getOrderBy(sort: ProductSortMode) {
+  if (sort === "price") {
+    return [{ currentPrice: "asc" as const }, { genericNameEn: "asc" as const }];
+  }
+
+  if (sort === "unitPrice") {
+    return [{ currentUnitPrice: "asc" as const }, { genericNameEn: "asc" as const }];
+  }
+
+  return [{ genericNameEn: "asc" as const }, { currentPrice: "asc" as const }];
+}
+
+export async function getProducts(input: ProductQueryInput = {}): Promise<ProductQueryResult> {
   let products;
+  let total;
+  const limit = Math.min(Math.max(input.limit ?? 48, 1), 100);
+  const offset = Math.max(input.offset ?? 0, 0);
+  const search = input.search?.trim();
+  const sort = input.sort ?? "relevance";
+  const where = {
+    ...(input.supermarket && input.supermarket !== "all" ? { supermarket: input.supermarket } : {}),
+    ...(input.dealsOnly ? { isDealActive: true } : {}),
+    ...(search
+      ? {
+          OR: [
+            { originalName: { contains: search } },
+            { genericNameEn: { contains: search } },
+            { genericNameEs: { contains: search } },
+            {
+              categories: {
+                some: {
+                  category: {
+                    label: { contains: search },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      : {}),
+  };
 
   try {
-    products = await prisma.product.findMany({
-      include: {
-        categories: {
-          include: {
-            category: true,
+    [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        include: {
+          categories: {
+            include: {
+              category: true,
+            },
+          },
+          priceHistory: {
+            orderBy: {
+              capturedAt: "desc",
+            },
+            take: 8,
           },
         },
-        priceHistory: {
-          orderBy: {
-            capturedAt: "desc",
-          },
-        },
-      },
-      orderBy: [{ genericNameEn: "asc" }, { supermarket: "asc" }],
-    });
+        orderBy: getOrderBy(sort),
+        skip: offset,
+        take: limit,
+      }),
+      prisma.product.count({ where }),
+    ]);
   } catch (error) {
     if (isMissingTableError(error)) {
-      return [];
+      return {
+        products: [],
+        total: 0,
+        hasMore: false,
+        nextOffset: null,
+      };
     }
 
     throw error;
   }
 
-  return products.map((product) => {
-    const dayPrice = nearestHistoryPrice(product.priceHistory, 1);
-    const weekPrice = nearestHistoryPrice(product.priceHistory, 7);
+  const mappedProducts = products.map(mapProductCard);
 
-    return {
-      id: product.id,
-      supermarket: product.supermarket,
-      originalName: product.originalName,
-      genericNameEn: product.genericNameEn,
-      genericNameEs: product.genericNameEs,
-      quantityText: product.quantityText,
-      normalizedUnit: product.normalizedUnit,
-      currentPrice: product.currentPrice,
-      currentUnitPrice: product.currentUnitPrice,
-      imageUrl: product.imageUrl,
-      dealText: product.dealText,
-      isDealActive: product.isDealActive,
-      categories: product.categories.map((item) => item.category.label),
-      lastFetchedAt: product.lastFetchedAt?.toISOString() ?? null,
-      dayOverDayPct: percentageChange(product.currentPrice, dayPrice),
-      weekOverWeekPct: percentageChange(product.currentPrice, weekPrice),
-      sourceUrl: product.sourceUrl,
-      priceHistory: product.priceHistory
-        .slice(0, 8)
-        .reverse()
-        .map((entry) => ({
-          capturedAt: entry.capturedAt.toISOString(),
-          price: entry.price,
-        })),
-    };
-  });
+  if (sort === "dayChange") {
+    mappedProducts.sort((left, right) => Math.abs(left.dayOverDayPct ?? 0) - Math.abs(right.dayOverDayPct ?? 0));
+  }
+
+  if (sort === "weekChange") {
+    mappedProducts.sort((left, right) => Math.abs(left.weekOverWeekPct ?? 0) - Math.abs(right.weekOverWeekPct ?? 0));
+  }
+
+  return {
+    products: mappedProducts,
+    total,
+    hasMore: offset + mappedProducts.length < total,
+    nextOffset: offset + mappedProducts.length < total ? offset + mappedProducts.length : null,
+  };
 }
 
 export async function getFetchRuns(): Promise<FetchRunSummary[]> {

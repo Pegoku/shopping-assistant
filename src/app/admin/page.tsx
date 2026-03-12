@@ -6,7 +6,11 @@ import { getFetchRuns, getLatestFetchRun, getProducts } from "@/lib/queries";
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const [products, fetchRuns, latestRun] = await Promise.all([getProducts(), getFetchRuns(), getLatestFetchRun()]);
+  const [productsResult, fetchRuns, latestRun] = await Promise.all([
+    getProducts({ limit: 100 }),
+    getFetchRuns(),
+    getLatestFetchRun(),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -20,7 +24,7 @@ export default async function AdminPage() {
               <h2 className="text-xl sm:text-2xl font-bold leading-snug mt-1 text-gray-900">Manual overrides</h2>
             </div>
           </div>
-          <AdminProductsTable products={products} />
+          <AdminProductsTable products={productsResult.products} />
         </div>
       </section>
     </div>
