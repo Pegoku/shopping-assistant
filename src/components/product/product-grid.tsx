@@ -13,6 +13,7 @@ type ProductGridProps = {
 };
 
 const pageSize = 120;
+const preloadThreshold = 60;
 
 export function ProductGrid({ initialResult }: ProductGridProps) {
   const { language } = useLanguage();
@@ -103,9 +104,7 @@ export function ProductGrid({ initialResult }: ProductGridProps) {
           void loadMore();
         }
       },
-      {
-        rootMargin: "600px 0px",
-      },
+      { rootMargin: "200px 0px" },
     );
 
     observer.observe(target);
@@ -158,13 +157,19 @@ export function ProductGrid({ initialResult }: ProductGridProps) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3.5">
-        {result.products.map((product) => (
-          <ProductCard key={product.id} language={language} product={product} />
-        ))}
+        {result.products.map((product, index) => {
+          const shouldAttachSentinel = result.hasMore && index === Math.max(0, result.products.length - preloadThreshold);
+
+          return (
+            <div key={product.id} ref={shouldAttachSentinel ? loadMoreRef : null}>
+              <ProductCard language={language} product={product} />
+            </div>
+          );
+        })}
       </div>
 
       {result.hasMore ? (
-        <div className="flex justify-center pt-2" ref={loadMoreRef}>
+        <div className="flex justify-center pt-2">
           <button
             className="px-5 py-3 bg-gray-900 text-white rounded-full hover:bg-gray-800 transition-colors disabled:opacity-50"
             disabled={loadingMore}
