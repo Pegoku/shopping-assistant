@@ -26,46 +26,60 @@ async function callAi<T>(messages: Array<{ role: "system" | "user"; content: str
     return null;
   }
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0,
-      max_tokens: 900,
-      response_format: {
-        type: "json_object",
+  const retries = Math.max(1, Number(process.env.AI_ENRICHMENT_RETRIES ?? 2));
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
-    }),
-  });
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0,
+        max_tokens: 900,
+        response_format: {
+          type: "json_object",
+        },
+      }),
+    });
 
-  if (!response.ok) {
-    return null;
+    if (!response.ok) {
+      if (attempt < retries) {
+        continue;
+      }
+      return null;
+    }
+
+    const payload = (await response.json()) as {
+      choices?: Array<{
+        message?: {
+          content?: string;
+        };
+      }>;
+    };
+
+    const content = payload.choices?.[0]?.message?.content;
+
+    if (!content) {
+      if (attempt < retries) {
+        continue;
+      }
+      return null;
+    }
+
+    try {
+      return JSON.parse(content) as T;
+    } catch {
+      if (attempt === retries) {
+        return null;
+      }
+    }
   }
 
-  const payload = (await response.json()) as {
-    choices?: Array<{
-      message?: {
-        content?: string;
-      };
-    }>;
-  };
-
-  const content = payload.choices?.[0]?.message?.content;
-
-  if (!content) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(content) as T;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 async function mapWithConcurrency<T, R>(
@@ -87,6 +101,27 @@ async function mapWithConcurrency<T, R>(
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => runWorker()));
 
   return results;
+}
+
+async function requestBatchNames(batch: string[]) {
+  const prompt = batch.map((name, itemIndex) => `${itemIndex + 1}. ${name}`).join("\n");
+  return callAi<{
+    items?: Array<{
+      originalName?: string;
+      english?: string;
+      spanish?: string;
+    }>;
+  }>([
+    {
+      role: "system",
+      content:
+        "You normalize grocery product names. Return JSON with an items array. Each item must include originalName, english, and spanish. english and spanish must be short labels useful for shopping search, not full marketing titles. No reasoning, no explanation, no extra keys.",
+    },
+    {
+      role: "user",
+      content: `Normalize these grocery product names:\n${prompt}`,
+    },
+  ]);
 }
 
 export async function generateGenericNames(originalName: string): Promise<GenericNames> {
@@ -185,24 +220,12 @@ export async function generateGenericNamesBatch(
       batchSize: batch.length,
     });
 
-    const prompt = batch.map((name, itemIndex) => `${itemIndex + 1}. ${name}`).join("\n");
-    const parsed = await callAi<{
-      items?: Array<{
-        originalName?: string;
-        english?: string;
-        spanish?: string;
-      }>;
-    }>([
-      {
-        role: "system",
-        content:
-          "You normalize grocery product names. Return JSON with an items array. Each item must include originalName, english, and spanish. english and spanish must be short labels useful for shopping search, not full marketing titles. No reasoning, no explanation, no extra keys.",
-      },
-      {
-        role: "user",
-        content: `Normalize these grocery product names:\n${prompt}`,
-      },
-    ]);
+    let parsed = await requestBatchNames(batch);
+
+    if ((parsed?.items?.length ?? 0) === 0 && batch.length > 0) {
+      console.warn(`[AI] Empty output for batch ${batchIndex}/${totalBatches}, retrying once`);
+      parsed = await requestBatchNames(batch);
+    }
 
     console.log(`[AI] Batch ${batchIndex}/${totalBatches} raw output: ${JSON.stringify(parsed?.items ?? [])}`);
 
