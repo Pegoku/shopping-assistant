@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { Language } from "@/lib/types";
 
@@ -10,9 +10,23 @@ type LanguageContextValue = {
 };
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
+const storageKey = "shopping-assistant-language";
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<Language>("en");
+  const [language, setLanguage] = useState<Language>("es");
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(storageKey);
+
+    if (saved === "en" || saved === "es") {
+      setLanguage(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKey, language);
+  }, [language]);
+
   const value = useMemo(() => ({ language, setLanguage }), [language]);
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

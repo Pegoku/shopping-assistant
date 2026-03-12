@@ -12,7 +12,7 @@ type ProductGridProps = {
   initialResult: ProductQueryResult;
 };
 
-const pageSize = 48;
+const pageSize = 120;
 
 export function ProductGrid({ initialResult }: ProductGridProps) {
   const { language } = useLanguage();
@@ -171,7 +171,7 @@ export function ProductGrid({ initialResult }: ProductGridProps) {
             onClick={() => void loadMore()}
             type="button"
           >
-            {loadingMore ? "Loading more..." : `Load 48 more`}
+            {loadingMore ? "Loading more..." : `Load ${pageSize} more`}
           </button>
         </div>
       ) : null}

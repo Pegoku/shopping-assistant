@@ -4,7 +4,7 @@ import { getProducts } from "@/lib/queries";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const initialResult = await getProducts({ limit: 48 });
+  const initialResult = await getProducts({ limit: 120 });
 
   return (
     <div className="flex flex-col gap-6">
