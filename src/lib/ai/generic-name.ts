@@ -92,7 +92,7 @@ export async function generateGenericNames(originalName: string): Promise<Generi
     {
       role: "system",
       content:
-        "Return compact JSON with keys english and spanish. Normalize grocery product names to short generic nouns for shopping search.",
+        "Return compact JSON with keys english and spanish. Normalize grocery product names to short generic nouns for shopping search. Eg. AH Aardappel ovenschaal patatas bravas should return { english: 'Brava Potatoes', spanish: 'Patatas Bravas' }; ah baby avocado eetrijp should return { english: 'Baby Avocado', spanish: 'Aguacate Bebé' }. Only return the JSON, no explanations.",
     },
     {
       role: "user",
