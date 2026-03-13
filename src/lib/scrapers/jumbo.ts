@@ -11,6 +11,12 @@ import {
 
 const baseUrl = "https://www.jumbo.com";
 const graphqlUrl = `${baseUrl}/api/graphql`;
+const supplementalJumboListings: CategoryLink[] = [
+  {
+    label: "Jumbo brand listing",
+    path: "/producten/jumbo/",
+  },
+];
 
 type JumboSearchResponse = {
   data?: {
@@ -85,7 +91,7 @@ const searchProductsQuery = `
 
 export async function discoverJumboCategories(): Promise<CategoryLink[]> {
   const html = await fetchHtml(`${baseUrl}/producten`);
-  return parseCategoryLinksFromHtml(
+  const categories = parseCategoryLinksFromHtml(
     html,
     (path) => path.startsWith("/producten/") && path !== "/producten" && path !== "/producten/" && path.endsWith("/"),
   ).filter(
@@ -93,8 +99,15 @@ export async function discoverJumboCategories(): Promise<CategoryLink[]> {
       !category.path.includes("/producten/jumbo/") &&
       !category.path.includes("/producten/jumbos/") &&
       !category.path.includes("/producten/aanbiedingen") &&
+      !category.path.includes("/producten/jumbo/") &&
       !category.label.includes("resultaten - unchecked"),
   );
+
+  if (process.env.JUMBO_INCLUDE_BRAND_LISTING === "false") {
+    return categories;
+  }
+
+  return [...categories, ...supplementalJumboListings];
 }
 
 function getProductKey(product: ScrapedProduct) {

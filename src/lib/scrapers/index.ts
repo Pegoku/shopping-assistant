@@ -229,7 +229,33 @@ function dedupeScrapeResult(result: ScrapeResult) {
   } satisfies ScrapeResult;
 }
 
-async function upsertProduct(product: ScrapedProduct) {
+type PersistenceContext = {
+  categoryCache: Map<string, { id: string; label: string }>;
+};
+
+async function getCategoryRecords(labels: string[], context: PersistenceContext) {
+  return Promise.all(
+    labels.map(async (label) => {
+      const slug = slugify(label);
+      const cached = context.categoryCache.get(slug);
+
+      if (cached) {
+        return cached;
+      }
+
+      const record = await prisma.category.upsert({
+        where: { slug },
+        update: { label },
+        create: { slug, label },
+      });
+
+      context.categoryCache.set(slug, { id: record.id, label: record.label });
+      return { id: record.id, label: record.label };
+    }),
+  );
+}
+
+async function upsertProduct(product: ScrapedProduct, context: PersistenceContext) {
   const names = {
     english: product.genericNameEn ?? product.originalName.toLowerCase(),
     spanish: product.genericNameEs ?? product.originalName.toLowerCase(),
@@ -260,15 +286,7 @@ async function upsertProduct(product: ScrapedProduct) {
   );
 
   const categoryRecords = mergedCategoryLabels.length
-    ? await Promise.all(
-        mergedCategoryLabels.map((label) =>
-          prisma.category.upsert({
-            where: { slug: slugify(label) },
-            update: { label },
-            create: { slug: slugify(label), label },
-          }),
-        ),
-      )
+    ? await getCategoryRecords(mergedCategoryLabels, context)
     : [];
 
   if (!existing) {
@@ -456,8 +474,13 @@ export function startConfiguredScrapeRunInBackground(runId: string, options?: Sc
 
 export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
   const sourceMode = process.env.SCRAPER_MODE ?? "mock";
+  const progressWriteInterval = Math.max(1, Number(process.env.PERSIST_PROGRESS_INTERVAL ?? 1000));
+  const cancelCheckInterval = Math.max(1, Number(process.env.CANCEL_CHECK_INTERVAL ?? 100));
   console.log(`[SCRAPE] Starting job ${runId} in ${sourceMode} mode`);
   const progressState = emptyProgressState();
+  const persistenceContext: PersistenceContext = {
+    categoryCache: new Map(),
+  };
   let hadWarnings = false;
 
   const reportProgress = async (event: ScrapeProgressEvent) => {
@@ -532,13 +555,16 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
       await updateRunProgress(runId, progressState);
 
       for (const product of result.products) {
-        await throwIfCancelled(runId);
-        const summary = await upsertProduct(product);
+        if (itemsFetched % cancelCheckInterval === 0) {
+          await throwIfCancelled(runId);
+        }
+
+        const summary = await upsertProduct(product, persistenceContext);
         itemsFetched += 1;
         itemsCreated += summary.created;
         itemsUpdated += summary.updated;
 
-        if (itemsFetched % 25 === 0) {
+        if (itemsFetched % progressWriteInterval === 0) {
           await prisma.fetchRun.update({
             where: { id: runId },
             data: {
