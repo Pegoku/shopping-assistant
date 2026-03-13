@@ -210,7 +210,7 @@ async function scrapeCategory(
   });
 
   const remainingPages = Array.from({ length: Math.max(0, finalPage - 1) }, (_, index) => index + 2);
-  const concurrency = Math.max(1, Number(process.env.AH_PAGE_CONCURRENCY ?? 4));
+  const concurrency = Math.max(1, Number(process.env.AH_PAGE_CONCURRENCY ?? 8));
 
   const pageResults = await mapWithConcurrency(remainingPages, concurrency, async (page) => {
     try {
@@ -300,30 +300,36 @@ export async function scrapeAlbertHeijn(
     message: `AH discovered ${categories.length} categories`,
     categoriesTotal: finalCategories.length,
   });
-  const products: ScrapedProduct[] = [];
   const seenKeys = new Set<string>();
+  const categoryConcurrency = Math.max(1, Number(process.env.AH_CATEGORY_CONCURRENCY ?? 3));
+  let completedCategories = 0;
 
-  for (const [index, category] of finalCategories.entries()) {
+  const categoryResults = await mapWithConcurrency(finalCategories, categoryConcurrency, async (category) => {
     console.log(`[AH] Scraping category: ${category.label} (${category.path})`);
     await reportProgress?.({
       store: "AH",
       category: category.label,
       message: `AH scraping ${category.label}`,
-      categoriesDone: index,
+      categoriesDone: completedCategories,
       categoriesTotal: finalCategories.length,
     });
+
     const categoryProducts = await scrapeCategory(category.path, category.label, seenKeys, reportProgress);
-    products.push(...categoryProducts);
-    console.log(`[AH] Completed ${category.label}: ${categoryProducts.length} products (overall ${products.length})`);
+    completedCategories += 1;
+    console.log(`[AH] Completed ${category.label}: ${categoryProducts.length} products`);
     await reportProgress?.({
       store: "AH",
       category: category.label,
       message: `AH completed ${category.label}`,
-      categoriesDone: index + 1,
+      categoriesDone: completedCategories,
       categoriesTotal: finalCategories.length,
       itemsDiscovered: 0,
     });
-  }
+
+    return categoryProducts;
+  });
+
+  const products = categoryResults.flat();
 
   console.log(`[AH] Finished scrape with ${products.length} products`);
 
