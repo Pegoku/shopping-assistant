@@ -7,6 +7,7 @@ export type CategoryLink = {
 
 export async function fetchHtml(url: string) {
   const retries = Number(process.env.SCRAPER_FETCH_RETRIES ?? 3);
+  const isAlbertHeijn = url.includes("ah.nl");
 
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     const response = await fetch(url, {
@@ -25,7 +26,13 @@ export async function fetchHtml(url: string) {
 
     if (attempt < retries) {
       console.warn(`[FETCH] Retry ${attempt}/${retries - 1} for ${url} after HTTP ${response.status}`);
-      await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+      const baseDelayMs = response.status === 403 || response.status === 429
+        ? isAlbertHeijn
+          ? 5000
+          : 2500
+        : 1000;
+      const jitterMs = Math.floor(Math.random() * 500);
+      await new Promise((resolve) => setTimeout(resolve, attempt * baseDelayMs + jitterMs));
       continue;
     }
 

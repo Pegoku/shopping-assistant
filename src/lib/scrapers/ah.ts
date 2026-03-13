@@ -210,7 +210,7 @@ async function scrapeCategory(
   });
 
   const remainingPages = Array.from({ length: Math.max(0, finalPage - 1) }, (_, index) => index + 2);
-  const concurrency = Math.max(1, Number(process.env.AH_PAGE_CONCURRENCY ?? 8));
+  const concurrency = Math.max(1, Number(process.env.AH_PAGE_CONCURRENCY ?? 4));
 
   const pageResults = await mapWithConcurrency(remainingPages, concurrency, async (page) => {
     try {
@@ -301,7 +301,7 @@ export async function scrapeAlbertHeijn(
     categoriesTotal: finalCategories.length,
   });
   const seenKeys = new Set<string>();
-  const categoryConcurrency = Math.max(1, Number(process.env.AH_CATEGORY_CONCURRENCY ?? 3));
+  const categoryConcurrency = Math.max(1, Number(process.env.AH_CATEGORY_CONCURRENCY ?? 2));
   let completedCategories = 0;
 
   const categoryResults = await mapWithConcurrency(finalCategories, categoryConcurrency, async (category) => {
