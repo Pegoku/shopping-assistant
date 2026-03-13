@@ -34,6 +34,26 @@ type AhProductRecord = {
 
 const baseUrl = "https://www.ah.nl";
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+) {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => runWorker()));
+  return results;
+}
+
 export async function discoverAlbertHeijnCategories(): Promise<CategoryLink[]> {
   const html = await fetchHtml(`${baseUrl}/producten`);
   return parseCategoryLinksFromHtml(
@@ -189,41 +209,56 @@ async function scrapeCategory(
     itemsExpected: totalProducts,
   });
 
-  for (let page = 2; page <= finalPage; page += 1) {
+  const remainingPages = Array.from({ length: Math.max(0, finalPage - 1) }, (_, index) => index + 2);
+  const concurrency = Math.max(1, Number(process.env.AH_PAGE_CONCURRENCY ?? 4));
+
+  const pageResults = await mapWithConcurrency(remainingPages, concurrency, async (page) => {
     try {
       const html = await fetchHtml(`${baseUrl}${path}?page=${page}&withOffset=true`);
       const state = parseApolloState(html);
       const pageProducts = parseProductsFromState(state);
-      products.push(...pageProducts);
-      let newPageProducts = 0;
-
-      for (const product of pageProducts) {
-        const key = getProductKey(product);
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key);
-          newPageProducts += 1;
-        }
-      }
-
-      console.log(`[AH] ${path} page ${page}/${finalPage}: ${pageProducts.length} products (${newPageProducts} new, running total ${products.length})`);
-      await reportProgress?.({
-        store: "AH",
-        category: label,
-        message: `AH ${label} page ${page}/${finalPage}`,
-        pagesProcessed: 1,
-        itemsDiscovered: newPageProducts,
-      });
+      return { page, pageProducts, error: null };
     } catch (error) {
-      const message = error instanceof Error ? error.message : `Failed page ${page}`;
-      console.error(`[AH] ${path} page ${page}/${finalPage} failed: ${message}`);
+      return {
+        page,
+        pageProducts: [] as ScrapedProduct[],
+        error: error instanceof Error ? error.message : `Failed page ${page}`,
+      };
+    }
+  });
+
+  for (const result of pageResults.sort((left, right) => left.page - right.page)) {
+    if (result.error) {
+      console.error(`[AH] ${path} page ${result.page}/${finalPage} failed: ${result.error}`);
       await reportProgress?.({
         store: "AH",
         category: label,
-        message: `AH ${label} page ${page}/${finalPage} failed: ${message}`,
+        message: `AH ${label} page ${result.page}/${finalPage} failed: ${result.error}`,
         pagesProcessed: 1,
         warning: true,
       });
+      continue;
     }
+
+    products.push(...result.pageProducts);
+    let newPageProducts = 0;
+
+    for (const product of result.pageProducts) {
+      const key = getProductKey(product);
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        newPageProducts += 1;
+      }
+    }
+
+    console.log(`[AH] ${path} page ${result.page}/${finalPage}: ${result.pageProducts.length} products (${newPageProducts} new, running total ${products.length})`);
+    await reportProgress?.({
+      store: "AH",
+      category: label,
+      message: `AH ${label} page ${result.page}/${finalPage}`,
+      pagesProcessed: 1,
+      itemsDiscovered: newPageProducts,
+    });
   }
 
   return products;
