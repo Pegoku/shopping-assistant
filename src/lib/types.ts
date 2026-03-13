@@ -89,4 +89,5 @@ export type FetchRunStoreSummary = {
   warnings: number;
   currentCategory: string | null;
   currentMessage: string | null;
+  completedAt: string | null;
 };

@@ -294,6 +294,7 @@ type FetchRunSummaryRow = {
   ahWarnings: number;
   ahCurrentCategory: string | null;
   ahCurrentMessage: string | null;
+  ahCompletedAt: Date | null;
   jumboCategoriesDone: number;
   jumboCategoriesTotal: number | null;
   jumboPagesProcessed: number;
@@ -302,6 +303,7 @@ type FetchRunSummaryRow = {
   jumboWarnings: number;
   jumboCurrentCategory: string | null;
   jumboCurrentMessage: string | null;
+  jumboCompletedAt: Date | null;
 };
 
 function asFetchRunSummaryRow(run: unknown) {
@@ -321,6 +323,7 @@ function mapStoreSummary(run: unknown): { AH: FetchRunStoreSummary; JUMBO: Fetch
       warnings: row.ahWarnings,
       currentCategory: row.ahCurrentCategory,
       currentMessage: row.ahCurrentMessage,
+      completedAt: row.ahCompletedAt?.toISOString() ?? null,
     },
     JUMBO: {
       categoriesDone: row.jumboCategoriesDone,
@@ -331,6 +334,7 @@ function mapStoreSummary(run: unknown): { AH: FetchRunStoreSummary; JUMBO: Fetch
       warnings: row.jumboWarnings,
       currentCategory: row.jumboCurrentCategory,
       currentMessage: row.jumboCurrentMessage,
+      completedAt: row.jumboCompletedAt?.toISOString() ?? null,
     },
   };
 }

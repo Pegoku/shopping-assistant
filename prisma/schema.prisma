@@ -102,6 +102,7 @@ model FetchRun {
   ahWarnings        Int          @default(0)
   ahCurrentCategory String?
   ahCurrentMessage  String?
+  ahCompletedAt     DateTime?
   jumboCategoriesDone  Int       @default(0)
   jumboCategoriesTotal Int?
   jumboPagesProcessed  Int       @default(0)
@@ -110,6 +111,7 @@ model FetchRun {
   jumboWarnings        Int       @default(0)
   jumboCurrentCategory String?
   jumboCurrentMessage  String?
+  jumboCompletedAt     DateTime?
   errorMessage      String?
 }
 
