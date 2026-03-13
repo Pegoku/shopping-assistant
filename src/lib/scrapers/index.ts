@@ -36,6 +36,7 @@ type RunProgressState = {
       warnings: number;
       currentCategory: string | null;
       currentMessage: string | null;
+      completedAt: Date | null;
     };
     JUMBO: {
       categoriesDone: number;
@@ -46,6 +47,7 @@ type RunProgressState = {
       warnings: number;
       currentCategory: string | null;
       currentMessage: string | null;
+      completedAt: Date | null;
     };
   };
 };
@@ -93,6 +95,7 @@ function emptyProgressState(): RunProgressState {
         warnings: 0,
         currentCategory: null,
         currentMessage: null,
+        completedAt: null,
       },
       JUMBO: {
         categoriesDone: 0,
@@ -103,6 +106,7 @@ function emptyProgressState(): RunProgressState {
         warnings: 0,
         currentCategory: null,
         currentMessage: null,
+        completedAt: null,
       },
     },
   };
@@ -147,6 +151,7 @@ async function updateRunProgress(runId: string, state: RunProgressState) {
       ahWarnings: state.stores.AH.warnings,
       ahCurrentCategory: state.stores.AH.currentCategory,
       ahCurrentMessage: state.stores.AH.currentMessage,
+      ahCompletedAt: state.stores.AH.completedAt,
       jumboCategoriesDone: state.stores.JUMBO.categoriesDone,
       jumboCategoriesTotal: state.stores.JUMBO.categoriesTotal,
       jumboPagesProcessed: state.stores.JUMBO.pagesProcessed,
@@ -155,6 +160,7 @@ async function updateRunProgress(runId: string, state: RunProgressState) {
       jumboWarnings: state.stores.JUMBO.warnings,
       jumboCurrentCategory: state.stores.JUMBO.currentCategory,
       jumboCurrentMessage: state.stores.JUMBO.currentMessage,
+      jumboCompletedAt: state.stores.JUMBO.completedAt,
     },
   });
 }
@@ -478,6 +484,12 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
       store.categoriesDone = event.categoriesDone ?? store.categoriesDone;
       store.categoriesTotal = event.categoriesTotal ?? store.categoriesTotal;
       store.itemsFound += event.itemsDiscovered ?? 0;
+      if (store.categoriesTotal !== null && store.categoriesDone >= store.categoriesTotal && !store.completedAt) {
+        store.completedAt = new Date();
+      }
+      if (event.categoriesDone !== undefined && event.categoriesTotal !== undefined && event.categoriesDone < event.categoriesTotal) {
+        store.completedAt = null;
+      }
       if (event.warning) {
         store.warnings += 1;
       }
@@ -561,6 +573,8 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
         currentMessage: hadWarnings ? "Completed with warnings" : "Completed successfully",
         progressPercent: 100,
         warningCount: progressState.warningCount,
+        ahCompletedAt: progressState.stores.AH.completedAt,
+        jumboCompletedAt: progressState.stores.JUMBO.completedAt,
         completedAt: new Date(),
       },
     });
@@ -591,6 +605,8 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
           currentCategory: progressState.currentCategory,
           progressPercent: progressState.progressPercent,
           warningCount: progressState.warningCount,
+          ahCompletedAt: progressState.stores.AH.completedAt,
+          jumboCompletedAt: progressState.stores.JUMBO.completedAt,
           completedAt: new Date(),
         },
       });
@@ -608,8 +624,8 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
     console.error(`[SCRAPE] Job failed: ${message}`);
     await prisma.fetchRun.update({
       where: { id: runId },
-      data: {
-        status: FetchStatus.FAILED,
+        data: {
+          status: FetchStatus.FAILED,
         errorMessage: message,
         currentMessage: message,
         itemsDiscovered: progressState.itemsDiscovered,
@@ -620,11 +636,13 @@ export async function runScrapeJob(runId: string, options?: ScrapeJobOptions) {
         categoriesTotal: progressState.categoriesTotal,
         currentStore: progressState.currentStore,
         currentCategory: progressState.currentCategory,
-        progressPercent: progressState.progressPercent,
-        warningCount: progressState.warningCount,
-        completedAt: new Date(),
-      },
-    });
+          progressPercent: progressState.progressPercent,
+          warningCount: progressState.warningCount,
+          ahCompletedAt: progressState.stores.AH.completedAt,
+          jumboCompletedAt: progressState.stores.JUMBO.completedAt,
+          completedAt: new Date(),
+        },
+      });
 
     return {
       ok: false,

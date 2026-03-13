@@ -5,6 +5,12 @@ type GenericNames = {
   spanish: string;
 };
 
+type BatchAiItem = {
+  originalName?: string | null;
+  english?: string | null;
+  spanish?: string | null;
+};
+
 function createFallbackName(originalName: string) {
   return originalName
     .trim()
@@ -106,11 +112,7 @@ async function mapWithConcurrency<T, R>(
 async function requestBatchNames(batch: string[]) {
   const prompt = batch.map((name, itemIndex) => `${itemIndex + 1}. ${name}`).join("\n");
   return callAi<{
-    items?: Array<{
-      originalName?: string;
-      english?: string;
-      spanish?: string;
-    }>;
+    items?: BatchAiItem[];
   }>([
     {
       role: "system",
@@ -122,6 +124,11 @@ async function requestBatchNames(batch: string[]) {
       content: `Normalize these grocery product names:\n${prompt}`,
     },
   ]);
+}
+
+function sanitizeBatchItems(items: BatchAiItem[] | undefined, batch: string[]) {
+  const batchSet = new Set(batch);
+  return (items ?? []).filter((item) => typeof item.originalName === "string" && batchSet.has(item.originalName.trim()));
 }
 
 export async function generateGenericNames(originalName: string): Promise<GenericNames> {
@@ -222,14 +229,14 @@ export async function generateGenericNamesBatch(
 
     let parsed = await requestBatchNames(batch);
 
-    if ((parsed?.items?.length ?? 0) === 0 && batch.length > 0) {
+    if (sanitizeBatchItems(parsed?.items, batch).length === 0 && batch.length > 0) {
       console.warn(`[AI] Empty output for batch ${batchIndex}/${totalBatches}, retrying once`);
       parsed = await requestBatchNames(batch);
     }
 
     console.log(`[AI] Batch ${batchIndex}/${totalBatches} raw output: ${JSON.stringify(parsed?.items ?? [])}`);
 
-    const parsedItems = parsed?.items ?? [];
+    const parsedItems = sanitizeBatchItems(parsed?.items, batch);
     const mapped = new Map<string, GenericNames>();
     const cacheWrites: Array<{ originalName: string; genericNameEn: string; genericNameEs: string }> = [];
 

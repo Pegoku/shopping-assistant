@@ -268,6 +268,7 @@ const emptyStoreSummary = {
   warnings: 0,
   currentCategory: null,
   currentMessage: null,
+  completedAt: null,
 };
 
 function StoreProgressCard({
@@ -285,7 +286,10 @@ function StoreProgressCard({
     ? Math.min(100, (summary.categoriesDone / summary.categoriesTotal) * 100)
     : 0;
   const progressWidth = `${Math.max(summary.categoriesDone > 0 ? 4 : 0, Math.round(categoryPercent))}%`;
-  const elapsedSeconds = startedAt ? Math.max(1, (Date.now() - new Date(startedAt).getTime()) / 1000) : 1;
+  const effectiveEnd = summary.completedAt ?? new Date().toISOString();
+  const elapsedSeconds = startedAt
+    ? Math.max(1, (new Date(effectiveEnd ?? startedAt).getTime() - new Date(startedAt).getTime()) / 1000)
+    : 1;
   const itemsPerSecond = summary.itemsFound / elapsedSeconds;
 
   return (
