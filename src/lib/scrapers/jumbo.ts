@@ -18,6 +18,26 @@ const supplementalJumboListings: CategoryLink[] = [
   },
 ];
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+) {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => runWorker()));
+  return results;
+}
+
 type JumboSearchResponse = {
   data?: {
     searchProducts?: {
@@ -260,7 +280,10 @@ async function scrapeCategory(
     itemsExpected: totalProducts,
   });
 
-  for (let page = 2; page <= totalPages; page += 1) {
+  const remainingPages = Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) => index + 2);
+  const concurrency = Math.max(1, Number(process.env.JUMBO_PAGE_CONCURRENCY ?? 8));
+
+  const pageResults = await mapWithConcurrency(remainingPages, concurrency, async (page) => {
     const offSet = (page - 1) * pageSize;
 
     try {
@@ -269,36 +292,48 @@ async function scrapeCategory(
         .map((product) => parseProduct(product, category.label))
         .filter(isScrapedProduct);
 
-      products.push(...pageProducts);
-      let newPageProducts = 0;
-
-      for (const product of pageProducts) {
-        const key = getProductKey(product);
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key);
-          newPageProducts += 1;
-        }
-      }
-
-      console.log(`[JUMBO] ${category.label} page ${page}/${totalPages}: ${pageProducts.length} products (${newPageProducts} new, unique total ${seenKeys.size})`);
-      await reportProgress?.({
-        store: "JUMBO",
-        category: category.label,
-        message: `Jumbo ${category.label} page ${page}/${totalPages}`,
-        pagesProcessed: 1,
-        itemsDiscovered: newPageProducts,
-      });
+      return { page, pageProducts, error: null };
     } catch (error) {
-      const message = error instanceof Error ? error.message : `Failed page ${page}`;
-      console.error(`[JUMBO] ${category.label} page ${page}/${totalPages} failed: ${message}`);
+      return {
+        page,
+        pageProducts: [] as ScrapedProduct[],
+        error: error instanceof Error ? error.message : `Failed page ${page}`,
+      };
+    }
+  });
+
+  for (const result of pageResults.sort((left, right) => left.page - right.page)) {
+    if (result.error) {
+      console.error(`[JUMBO] ${category.label} page ${result.page}/${totalPages} failed: ${result.error}`);
       await reportProgress?.({
         store: "JUMBO",
         category: category.label,
-        message: `Jumbo ${category.label} page ${page}/${totalPages} failed: ${message}`,
+        message: `Jumbo ${category.label} page ${result.page}/${totalPages} failed: ${result.error}`,
         pagesProcessed: 1,
         warning: true,
       });
+      continue;
     }
+
+    products.push(...result.pageProducts);
+    let newPageProducts = 0;
+
+    for (const product of result.pageProducts) {
+      const key = getProductKey(product);
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        newPageProducts += 1;
+      }
+    }
+
+    console.log(`[JUMBO] ${category.label} page ${result.page}/${totalPages}: ${result.pageProducts.length} products (${newPageProducts} new, unique total ${seenKeys.size})`);
+    await reportProgress?.({
+      store: "JUMBO",
+      category: category.label,
+      message: `Jumbo ${category.label} page ${result.page}/${totalPages}`,
+      pagesProcessed: 1,
+      itemsDiscovered: newPageProducts,
+    });
   }
 
   return products;
