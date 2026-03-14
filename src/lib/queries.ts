@@ -105,6 +105,58 @@ function getOrderBy(sort: ProductSortMode) {
   return [{ genericNameEn: "asc" as const }, { currentPrice: "asc" as const }];
 }
 
+function tokenize(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function hasWholeTokenMatch(text: string, candidate: string) {
+  const tokens = tokenize(text);
+  const candidateTokens = tokenize(candidate);
+
+  if (!candidateTokens.length) {
+    return false;
+  }
+
+  return candidateTokens.every((token) => tokens.includes(token));
+}
+
+function hasPrefixTokenMatch(text: string, candidate: string) {
+  const tokens = tokenize(text);
+  const candidateTokens = tokenize(candidate);
+
+  if (!candidateTokens.length) {
+    return false;
+  }
+
+  return candidateTokens.every((candidateToken) => tokens.some((token) => token.startsWith(candidateToken)));
+}
+
+function isStrongRecommendationCandidate(product: ProductCardData, request: RequestedItem) {
+  const candidates = [request.originalText, request.normalizedEn, request.normalizedEs].filter(Boolean);
+  const fields = [product.genericNameEn, product.genericNameEs, product.originalName];
+
+  return candidates.some((candidate) => {
+    const short = tokenize(candidate).join(" ").length <= 4;
+
+    return fields.some((field) => {
+      if (hasWholeTokenMatch(field, candidate)) {
+        return true;
+      }
+
+      if (!short && hasPrefixTokenMatch(field, candidate)) {
+        return true;
+      }
+
+      return false;
+    });
+  });
+}
+
 function rankRecommendationMatch(product: ProductCardData, request: RequestedItem) {
   const genericEn = product.genericNameEn.toLowerCase();
   const genericEs = product.genericNameEs.toLowerCase();
@@ -117,13 +169,16 @@ function rankRecommendationMatch(product: ProductCardData, request: RequestedIte
 
   for (const candidate of candidates) {
     if (genericEn === candidate || genericEs === candidate) {
-      score += 30;
+      score += 60;
     }
-    if (genericEn.includes(candidate) || genericEs.includes(candidate)) {
+    if (hasWholeTokenMatch(genericEn, candidate) || hasWholeTokenMatch(genericEs, candidate)) {
+      score += 35;
+    }
+    if (hasPrefixTokenMatch(genericEn, candidate) || hasPrefixTokenMatch(genericEs, candidate)) {
+      score += 18;
+    }
+    if (hasWholeTokenMatch(original, candidate)) {
       score += 12;
-    }
-    if (original.includes(candidate)) {
-      score += 8;
     }
   }
 
@@ -260,7 +315,9 @@ export async function getRecommendedProducts(
       });
 
       const mapped = products.map(mapProductCard);
-      mapped.sort((left, right) => {
+      const filtered = mapped.filter((product) => isStrongRecommendationCandidate(product, item));
+      const candidates = filtered.length ? filtered : mapped;
+      candidates.sort((left, right) => {
         const scoreDiff = rankRecommendationMatch(right, item) - rankRecommendationMatch(left, item);
 
         if (scoreDiff !== 0) {
@@ -276,7 +333,7 @@ export async function getRecommendedProducts(
 
       return {
         request: item,
-        options: mapped.slice(0, 4),
+        options: candidates.slice(0, 4),
       };
     }),
   );
