@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/db";
+import { parseShoppingRequest } from "@/lib/ai/shopping-intent";
 import type {
   FetchRunStoreSummary,
   FetchRunSummary,
   ProductCardData,
   ProductQueryInput,
   ProductQueryResult,
+  RecommendationResult,
+  RecommendationSortMode,
+  RequestedItem,
   ProductSortMode,
 } from "@/lib/types";
 
@@ -101,6 +105,35 @@ function getOrderBy(sort: ProductSortMode) {
   return [{ genericNameEn: "asc" as const }, { currentPrice: "asc" as const }];
 }
 
+function rankRecommendationMatch(product: ProductCardData, request: RequestedItem) {
+  const genericEn = product.genericNameEn.toLowerCase();
+  const genericEs = product.genericNameEs.toLowerCase();
+  const original = product.originalName.toLowerCase();
+  const candidates = [request.originalText, request.normalizedEn, request.normalizedEs]
+    .map((item) => item.toLowerCase())
+    .filter(Boolean);
+
+  let score = 0;
+
+  for (const candidate of candidates) {
+    if (genericEn === candidate || genericEs === candidate) {
+      score += 30;
+    }
+    if (genericEn.includes(candidate) || genericEs.includes(candidate)) {
+      score += 12;
+    }
+    if (original.includes(candidate)) {
+      score += 8;
+    }
+  }
+
+  if (product.isDealActive) {
+    score += 3;
+  }
+
+  return score;
+}
+
 export async function getProducts(input: ProductQueryInput = {}): Promise<ProductQueryResult> {
   let products;
   let total;
@@ -182,6 +215,76 @@ export async function getProducts(input: ProductQueryInput = {}): Promise<Produc
     total,
     hasMore: offset + mappedProducts.length < total,
     nextOffset: offset + mappedProducts.length < total ? offset + mappedProducts.length : null,
+  };
+}
+
+export async function getRecommendedProducts(
+  requestText: string,
+  sort: RecommendationSortMode = "unitPrice",
+): Promise<RecommendationResult> {
+  const items = await parseShoppingRequest(requestText);
+
+  if (!items.length) {
+    return {
+      items: [],
+      groups: [],
+      sort,
+    };
+  }
+
+  const groups = await Promise.all(
+    items.map(async (item) => {
+      const searchTerms = Array.from(new Set([item.originalText, item.normalizedEn, item.normalizedEs].filter(Boolean)));
+      const products = await prisma.product.findMany({
+        where: {
+          OR: searchTerms.flatMap((term) => [
+            { originalName: { contains: term } },
+            { genericNameEn: { contains: term } },
+            { genericNameEs: { contains: term } },
+          ]),
+        },
+        include: {
+          categories: {
+            include: {
+              category: true,
+            },
+          },
+          priceHistory: {
+            orderBy: {
+              capturedAt: "desc",
+            },
+            take: 8,
+          },
+        },
+        take: 30,
+      });
+
+      const mapped = products.map(mapProductCard);
+      mapped.sort((left, right) => {
+        const scoreDiff = rankRecommendationMatch(right, item) - rankRecommendationMatch(left, item);
+
+        if (scoreDiff !== 0) {
+          return scoreDiff;
+        }
+
+        if (sort === "price") {
+          return left.currentPrice - right.currentPrice;
+        }
+
+        return (left.currentUnitPrice ?? Number.MAX_SAFE_INTEGER) - (right.currentUnitPrice ?? Number.MAX_SAFE_INTEGER);
+      });
+
+      return {
+        request: item,
+        options: mapped.slice(0, 4),
+      };
+    }),
+  );
+
+  return {
+    items,
+    groups,
+    sort,
   };
 }
 

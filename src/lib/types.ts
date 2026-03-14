@@ -42,6 +42,25 @@ export type ProductQueryResult = {
   nextOffset: number | null;
 };
 
+export type RecommendationSortMode = "unitPrice" | "price";
+
+export type RequestedItem = {
+  originalText: string;
+  normalizedEn: string;
+  normalizedEs: string;
+};
+
+export type RecommendedItemGroup = {
+  request: RequestedItem;
+  options: ProductCardData[];
+};
+
+export type RecommendationResult = {
+  items: RequestedItem[];
+  groups: RecommendedItemGroup[];
+  sort: RecommendationSortMode;
+};
+
 export type CartItem = {
   id: string;
   originalName: string;
