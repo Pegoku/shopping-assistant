@@ -3,6 +3,10 @@ import { getRecommendedProducts } from "@/lib/queries";
 import type { RecommendationSortMode } from "@/lib/types";
 
 export async function POST(request: Request) {
+  if (process.env.ENABLE_RECOMMENDATIONS !== "true") {
+    return NextResponse.json({ error: "Recommendations are disabled" }, { status: 403 });
+  }
+
   const body = (await request.json()) as {
     text?: string;
     sort?: RecommendationSortMode;

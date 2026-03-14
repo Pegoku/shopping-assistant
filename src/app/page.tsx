@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const initialResult = await getProducts({ limit: 120 });
+  const recommendationsEnabled = process.env.ENABLE_RECOMMENDATIONS === "true";
 
   return (
     <div className="flex flex-col gap-6">
@@ -30,7 +31,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <RecommendationBuilder />
+      {recommendationsEnabled ? <RecommendationBuilder /> : null}
 
       <ProductGrid initialResult={initialResult} />
     </div>
