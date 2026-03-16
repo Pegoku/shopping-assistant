@@ -6,6 +6,18 @@ import { useLanguage } from "@/components/providers/language-provider";
 import { useCart } from "@/components/providers/cart-provider";
 import { formatCurrency } from "@/lib/utils";
 
+function getShareableImageUrl(item: { imageUrl: string | null; originalName: string }) {
+  if (!item.imageUrl) {
+    return `https://placehold.co/400x400/f8fafc/94a3b8.png?text=${encodeURIComponent(item.originalName)}`;
+  }
+
+  if (item.imageUrl.includes("images.ctfassets.net")) {
+    return `https://placehold.co/400x400/f8fafc/94a3b8.png?text=${encodeURIComponent(item.originalName)}`;
+  }
+
+  return item.imageUrl;
+}
+
 export function CartView() {
   const { items, removeItem, clearCart } = useCart();
   const { language } = useLanguage();
@@ -25,6 +37,22 @@ export function CartView() {
   }, [groups]);
 
   const total = totals.reduce((sum, entry) => sum + entry.subtotal, 0);
+
+  const whatsappUrl = useMemo(() => {
+    const message = [
+      "Cart items",
+      ...items.flatMap((item, index) => [
+        `${index + 1}. ${item.originalName}`,
+        `Image: ${getShareableImageUrl(item)}`,
+        `Web price: ${formatCurrency(item.currentPrice)}`,
+        "",
+      ]),
+    ]
+      .join("\n")
+      .trim();
+
+    return `https://wa.me/?text=${encodeURIComponent(message)}`;
+  }, [items]);
 
   if (!items.length) {
     return (
@@ -49,6 +77,14 @@ export function CartView() {
             </div>
           ))}
         </div>
+        <a
+          className="inline-flex items-center justify-center px-4 py-3 bg-green-600 text-white hover:bg-green-700 transition-colors rounded-full"
+          href={whatsappUrl}
+          rel="noreferrer"
+          target="_blank"
+        >
+          Send to WhatsApp
+        </a>
         <button className="inline-flex items-center justify-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-full" onClick={clearCart} type="button">
           Clear cart
         </button>
@@ -70,7 +106,7 @@ export function CartView() {
                 <article className="grid grid-cols-1 sm:grid-cols-[88px_1fr_auto] gap-4 items-center p-3.5 border border-gray-100 rounded-2xl bg-white/50" key={item.id}>
                   <div className="relative w-[88px] h-[88px] rounded-xl overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 flex-shrink-0">
                     {item.imageUrl ? (
-                      <Image alt={item.originalName} fill sizes="88px" src={item.imageUrl.includes('images.ctfassets.net') ? `https://placehold.co/400x400/f8fafc/94a3b8.png?text=${encodeURIComponent(item.originalName)}` : item.imageUrl} />
+                      <Image alt={item.originalName} fill sizes="88px" src={getShareableImageUrl(item)} />
                     ) : (
                       <div className="grid place-items-center h-full text-gray-400">No image</div>
                     )}
