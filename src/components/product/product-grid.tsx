@@ -24,7 +24,14 @@ export function ProductGrid({ initialResult }: ProductGridProps) {
   const [result, setResult] = useState<ProductQueryResult>(initialResult);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Record<string, ProductCardData>>({});
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  const selectedCompareProducts = useMemo(
+    () => Object.values(selectedProducts).sort((left, right) => (left.currentUnitPrice ?? Number.MAX_SAFE_INTEGER) - (right.currentUnitPrice ?? Number.MAX_SAFE_INTEGER)),
+    [selectedProducts],
+  );
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({
@@ -151,10 +158,40 @@ export function ProductGrid({ initialResult }: ProductGridProps) {
         </label>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3">
+        <div className="text-sm text-gray-600">
+          <strong className="text-gray-900">{selectedCompareProducts.length}</strong> items selected for comparison
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {selectedCompareProducts.length ? (
+            <button
+              className="rounded-full bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
+              onClick={() => {
+                setSelectedProducts({});
+                setCompareMode(false);
+              }}
+              type="button"
+            >
+              Clear selection
+            </button>
+          ) : null}
+          <button
+            className="rounded-full bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800 disabled:opacity-50"
+            disabled={selectedCompareProducts.length < 2}
+            onClick={() => setCompareMode((current) => !current)}
+            type="button"
+          >
+            {compareMode ? "Exit compare" : `Compare ${selectedCompareProducts.length || ""}`.trim()}
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-col sm:flex-row justify-between gap-4 text-xs tracking-wide uppercase text-gray-500">
         <p>{loading ? "Loading..." : `${result.total} products`}</p>
         <p>Showing {result.products.length} loaded so far. Search and filters run server-side.</p>
       </div>
+
+      {compareMode ? <ComparePanel language={language} products={selectedCompareProducts} /> : null}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3.5">
         {result.products.map((product, index) => {
@@ -162,7 +199,25 @@ export function ProductGrid({ initialResult }: ProductGridProps) {
 
           return (
             <div key={product.id} ref={shouldAttachSentinel ? loadMoreRef : null}>
-              <ProductCard language={language} product={product} />
+              <ProductCard
+                isSelectedForCompare={Boolean(selectedProducts[product.id])}
+                language={language}
+                onToggleCompare={() => {
+                  setSelectedProducts((current) => {
+                    if (current[product.id]) {
+                      const next = { ...current };
+                      delete next[product.id];
+                      return next;
+                    }
+
+                    return {
+                      ...current,
+                      [product.id]: product,
+                    };
+                  });
+                }}
+                product={product}
+              />
             </div>
           );
         })}
@@ -184,11 +239,21 @@ export function ProductGrid({ initialResult }: ProductGridProps) {
   );
 }
 
-function ProductCard({ language, product }: { language: "en" | "es"; product: ProductCardData }) {
+function ProductCard({
+  language,
+  onToggleCompare,
+  isSelectedForCompare,
+  product,
+}: {
+  language: "en" | "es";
+  onToggleCompare: () => void;
+  isSelectedForCompare: boolean;
+  product: ProductCardData;
+}) {
   const displayName = language === "es" ? product.genericNameEs : product.genericNameEn;
 
   return (
-    <article className="overflow-hidden rounded-2xl bg-white border border-gray-100 shadow-sm flex flex-col">
+    <article className={`overflow-hidden rounded-2xl bg-white border shadow-sm flex flex-col ${isSelectedForCompare ? "border-blue-500 ring-2 ring-blue-100" : "border-gray-100"}`}>
       <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         {product.imageUrl ? (
           <Image
@@ -226,6 +291,13 @@ function ProductCard({ language, product }: { language: "en" | "es"; product: Pr
         <PriceSparkline values={product.priceHistory.map((entry) => entry.price)} />
 
         <div className="flex flex-col gap-2 mt-auto">
+          <button
+            className={`inline-flex items-center justify-center px-3 py-2 text-xs rounded-full transition-colors ${isSelectedForCompare ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-gray-50 text-gray-700 hover:bg-gray-100"}`}
+            onClick={onToggleCompare}
+            type="button"
+          >
+            {isSelectedForCompare ? "Selected for compare" : "Select to compare"}
+          </button>
           <AddToCartButton
             item={{
               id: product.id,
@@ -246,5 +318,62 @@ function ProductCard({ language, product }: { language: "en" | "es"; product: Pr
         </div>
       </div>
     </article>
+  );
+}
+
+function ComparePanel({ language, products }: { language: "en" | "es"; products: ProductCardData[] }) {
+  if (products.length < 2) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-3xl border border-blue-100 bg-blue-50/60 p-5">
+      <div className="mb-4">
+        <p className="text-xs tracking-wide uppercase text-blue-700 font-medium">Comparison mode</p>
+        <h3 className="text-xl font-semibold text-gray-900">Compare selected products side by side.</h3>
+      </div>
+
+      <div className="overflow-x-auto">
+        <div className="grid gap-4" style={{ gridTemplateColumns: `220px repeat(${products.length}, minmax(220px, 1fr))` }}>
+          <div className="font-medium text-sm text-gray-500">Metric</div>
+          {products.map((product) => (
+            <div className="rounded-2xl border border-white/80 bg-white p-3 shadow-sm" key={product.id}>
+              <p className="text-[10px] tracking-wide text-gray-500 truncate">{product.originalName}</p>
+              <h4 className="mt-1 text-sm font-semibold text-gray-900 capitalize line-clamp-2">{language === "es" ? product.genericNameEs : product.genericNameEn}</h4>
+              <p className="mt-2 text-xs text-gray-500">{product.supermarket}</p>
+            </div>
+          ))}
+
+          <CompareRow label="Total price" products={products} renderValue={(product) => formatCurrency(product.currentPrice)} />
+          <CompareRow label="Unit price" products={products} renderValue={(product) => (product.currentUnitPrice ? `${formatCurrency(product.currentUnitPrice)}/${formatUnitLabel(product.normalizedUnit)}` : "-" )} />
+          <CompareRow label="Quantity" products={products} renderValue={(product) => product.quantityText} />
+          <CompareRow label="Deals" products={products} renderValue={(product) => product.dealText ?? (product.isDealActive ? "Deal" : "No") } />
+          <CompareRow label="DoD" products={products} renderValue={(product) => formatPercent(product.dayOverDayPct)} />
+          <CompareRow label="WoW" products={products} renderValue={(product) => formatPercent(product.weekOverWeekPct)} />
+          <CompareRow label="Categories" products={products} renderValue={(product) => product.categories.join(" • ") || "-"} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CompareRow({
+  label,
+  products,
+  renderValue,
+}: {
+  label: string;
+  products: ProductCardData[];
+  renderValue: (product: ProductCardData) => string;
+}) {
+  return (
+    <>
+      <div className="py-3 text-sm font-medium text-gray-600">{label}</div>
+      {products.map((product) => (
+        <div className="rounded-2xl border border-white/70 bg-white px-3 py-3 text-sm text-gray-900" key={`${product.id}-${label}`}>
+          {renderValue(product)}
+        </div>
+      ))}
+    </>
   );
 }
