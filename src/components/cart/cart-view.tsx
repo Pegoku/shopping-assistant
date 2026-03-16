@@ -1,26 +1,68 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/components/providers/language-provider";
 import { useCart } from "@/components/providers/cart-provider";
+import { getShareableImageUrl } from "@/lib/cart-share";
 import { formatCurrency } from "@/lib/utils";
 
-function getShareableImageUrl(item: { imageUrl: string | null; originalName: string }) {
-  if (!item.imageUrl) {
-    return `https://placehold.co/400x400/f8fafc/94a3b8.png?text=${encodeURIComponent(item.originalName)}`;
-  }
-
-  if (item.imageUrl.includes("images.ctfassets.net")) {
-    return `https://placehold.co/400x400/f8fafc/94a3b8.png?text=${encodeURIComponent(item.originalName)}`;
-  }
-
-  return item.imageUrl;
-}
+type WhatsAppStatusPayload = {
+  provider: "webjs" | "meta";
+  ready: boolean;
+  defaultTo: string | null;
+  requiresRecipient: boolean;
+  auth: {
+    state: "idle" | "initializing" | "qr" | "ready" | "auth_failure" | "disconnected";
+    qrCodeDataUrl: string | null;
+    error: string | null;
+  };
+};
 
 export function CartView() {
   const { items, removeItem, clearCart } = useCart();
   const { language } = useLanguage();
+  const [recipient, setRecipient] = useState("");
+  const [whatsAppStatus, setWhatsAppStatus] = useState<WhatsAppStatusPayload | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [sendFeedback, setSendFeedback] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadStatus() {
+      try {
+        const response = await fetch("/api/whatsapp/status", { cache: "no-store" });
+        const data = (await response.json()) as WhatsAppStatusPayload;
+
+        if (!isMounted) {
+          return;
+        }
+
+        setWhatsAppStatus(data);
+        setRecipient((current) => current || data.defaultTo || "");
+        setStatusError(null);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setStatusError(error instanceof Error ? error.message : "Failed to load WhatsApp status.");
+      }
+    }
+
+    void loadStatus();
+
+    const interval = window.setInterval(() => {
+      void loadStatus();
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const groups = useMemo(() => {
     return items.reduce<Record<string, typeof items>>((accumulator, item) => {
@@ -37,22 +79,40 @@ export function CartView() {
   }, [groups]);
 
   const total = totals.reduce((sum, entry) => sum + entry.subtotal, 0);
+  const resolvedRecipient = recipient.trim() || whatsAppStatus?.defaultTo || "";
+  const providerReady = whatsAppStatus?.provider === "meta" ? whatsAppStatus.ready : whatsAppStatus?.ready;
+  const canSend = Boolean(items.length && resolvedRecipient && providerReady && !isSending);
 
-  const whatsappUrl = useMemo(() => {
-    const message = [
-      "Cart items",
-      ...items.flatMap((item, index) => [
-        `${index + 1}. ${item.originalName}`,
-        `Image: ${getShareableImageUrl(item)}`,
-        `Web price: ${formatCurrency(item.currentPrice)}`,
-        "",
-      ]),
-    ]
-      .join("\n")
-      .trim();
+  async function handleSendToWhatsApp() {
+    setIsSending(true);
+    setSendFeedback(null);
 
-    return `https://wa.me/?text=${encodeURIComponent(message)}`;
-  }, [items]);
+    try {
+      const response = await fetch("/api/whatsapp/send-cart", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          items,
+          to: recipient.trim() || undefined,
+        }),
+      });
+
+      const data = (await response.json()) as { error?: string; sentCount?: number; to?: string };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Failed to send WhatsApp messages.");
+      }
+
+      setSendFeedback(`Sent ${data.sentCount ?? items.length} product messages to ${data.to ?? resolvedRecipient}.`);
+      setStatusError(null);
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : "Failed to send WhatsApp messages.");
+    } finally {
+      setIsSending(false);
+    }
+  }
 
   if (!items.length) {
     return (
@@ -77,14 +137,54 @@ export function CartView() {
             </div>
           ))}
         </div>
-        <a
-          className="inline-flex items-center justify-center px-4 py-3 bg-green-600 text-white hover:bg-green-700 transition-colors rounded-full"
-          href={whatsappUrl}
-          rel="noreferrer"
-          target="_blank"
-        >
-          Send to WhatsApp
-        </a>
+
+        <div className="flex flex-col gap-3 p-4 rounded-2xl bg-green-50 border border-green-100">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs tracking-wide uppercase text-green-700 font-medium">WhatsApp</span>
+            <span className="text-xs text-green-800">{whatsAppStatus?.provider === "meta" ? "Official API" : "whatsapp-web.js"}</span>
+          </div>
+
+          <label className="flex flex-col gap-1.5 text-sm text-gray-700">
+            Recipient number
+            <input
+              className="px-3 py-2 rounded-xl border border-green-200 bg-white text-gray-900 outline-none focus:border-green-500"
+              onChange={(event) => setRecipient(event.target.value)}
+              placeholder={whatsAppStatus?.defaultTo ?? "31612345678"}
+              type="tel"
+              value={recipient}
+            />
+          </label>
+
+          {whatsAppStatus?.provider === "webjs" && !whatsAppStatus.ready ? (
+            <div className="flex flex-col gap-3 rounded-2xl bg-white p-3 border border-green-100">
+              <p className="text-sm text-gray-700">Scan the QR code with WhatsApp Linked Devices to enable automatic sending.</p>
+              {whatsAppStatus.auth.qrCodeDataUrl ? (
+                <Image alt="WhatsApp QR code" className="rounded-xl border border-green-100 bg-white" height={280} src={whatsAppStatus.auth.qrCodeDataUrl} unoptimized width={280} />
+              ) : (
+                <p className="text-sm text-gray-500">Waiting for QR code...</p>
+              )}
+            </div>
+          ) : null}
+
+          {whatsAppStatus ? (
+            <p className="text-sm text-gray-600">
+              {whatsAppStatus.ready ? "Ready to send product images." : `Status: ${whatsAppStatus.auth.state.replaceAll("_", " ")}.`}
+            </p>
+          ) : null}
+
+          {sendFeedback ? <p className="text-sm text-green-700">{sendFeedback}</p> : null}
+          {statusError ? <p className="text-sm text-red-600">{statusError}</p> : null}
+
+          <button
+            className="inline-flex items-center justify-center px-4 py-3 bg-green-600 text-white hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed transition-colors rounded-full"
+            disabled={!canSend}
+            onClick={handleSendToWhatsApp}
+            type="button"
+          >
+            {isSending ? "Sending..." : "Send to WhatsApp"}
+          </button>
+        </div>
+
         <button className="inline-flex items-center justify-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-full" onClick={clearCart} type="button">
           Clear cart
         </button>
