@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
-    "db:seed": "bun run prisma/seed.ts"
+    "db:seed": "bun run prisma/seed.ts",
+    "whatsapp:groups": "bun run scripts/whatsapp-groups.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
