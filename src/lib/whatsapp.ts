@@ -55,6 +55,30 @@ const webJsStore =
     },
   });
 
+function logWhatsApp(message: string, details?: Record<string, unknown>) {
+  if (details) {
+    console.log(`[whatsapp] ${message}`, details);
+    return;
+  }
+
+  console.log(`[whatsapp] ${message}`);
+}
+
+function logWhatsAppError(message: string, error: unknown, details?: Record<string, unknown>) {
+  console.error(`[whatsapp] ${message}`, {
+    ...details,
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
+
+function maskRecipient(recipient: string) {
+  if (recipient.length <= 4) {
+    return recipient;
+  }
+
+  return `${recipient.slice(0, 2)}***${recipient.slice(-2)}`;
+}
+
 function getProvider(): WhatsAppProvider {
   return process.env.WHATSAPP_PROVIDER === "meta" ? "meta" : "webjs";
 }
@@ -117,6 +141,9 @@ function resetReadyPromise() {
 
 async function ensureWebJsClient() {
   if (webJsStore.clientPromise) {
+    logWhatsApp("reusing existing WhatsApp Web client promise", {
+      state: webJsStore.state.state,
+    });
     await webJsStore.clientPromise;
     return;
   }
@@ -145,7 +172,14 @@ async function ensureWebJsClient() {
 
   webJsStore.client = client;
 
+  logWhatsApp("initializing WhatsApp Web client", {
+    clientId: config.clientId,
+    dataPath: config.dataPath,
+    headless: config.headless,
+  });
+
   client.on("qr", async (qr) => {
+    logWhatsApp("received WhatsApp QR code");
     webJsStore.state = {
       state: "qr",
       qrCodeDataUrl: await QRCode.toDataURL(qr, { margin: 1, width: 280 }),
@@ -154,6 +188,7 @@ async function ensureWebJsClient() {
   });
 
   client.on("ready", () => {
+    logWhatsApp("WhatsApp Web client is ready");
     webJsStore.state = {
       state: "ready",
       qrCodeDataUrl: null,
@@ -163,6 +198,7 @@ async function ensureWebJsClient() {
   });
 
   client.on("auth_failure", (message) => {
+    logWhatsAppError("WhatsApp authentication failed", message);
     webJsStore.state = {
       state: "auth_failure",
       qrCodeDataUrl: null,
@@ -171,6 +207,7 @@ async function ensureWebJsClient() {
   });
 
   client.on("disconnected", (reason) => {
+    logWhatsAppError("WhatsApp Web client disconnected", reason);
     webJsStore.client = null;
     webJsStore.clientPromise = null;
     resetReadyPromise();
@@ -182,6 +219,7 @@ async function ensureWebJsClient() {
   });
 
   webJsStore.clientPromise = client.initialize().catch((error) => {
+    logWhatsAppError("failed to initialize WhatsApp Web client", error);
     webJsStore.client = null;
     webJsStore.clientPromise = null;
     webJsStore.state = {
@@ -196,9 +234,11 @@ async function ensureWebJsClient() {
 }
 
 async function waitForWebJsReady(timeoutMs = 30000) {
+  logWhatsApp("waiting for WhatsApp Web readiness", { timeoutMs });
   await ensureWebJsClient();
 
   if (webJsStore.state.state === "ready") {
+    logWhatsApp("WhatsApp Web already ready");
     return;
   }
 
@@ -214,9 +254,12 @@ async function waitForWebJsReady(timeoutMs = 30000) {
       setTimeout(() => reject(new Error("WhatsApp Web is not ready yet. Scan the QR code first.")), timeoutMs);
     }),
   ]);
+
+  logWhatsApp("WhatsApp Web became ready after waiting");
 }
 
 async function createMessageMedia(imageUrl: string) {
+  logWhatsApp("fetching WhatsApp media", { imageUrl });
   const response = await fetch(imageUrl);
 
   if (!response.ok) {
@@ -237,20 +280,44 @@ async function sendWithWebJs(input: SendCartInput): Promise<SendCartResult> {
   const chatId = getChatId(recipient);
   const activeClient = webJsStore.client;
 
+  logWhatsApp("sending cart with WhatsApp Web", {
+    recipient: maskRecipient(recipient),
+    chatId,
+    itemCount: input.items.length,
+  });
+
   if (!activeClient) {
     throw new Error("WhatsApp Web client is unavailable.");
   }
 
   for (const item of input.items) {
     const caption = buildCartItemWhatsAppCaption(item);
-    const media = await createMessageMedia(getShareableImageUrl(item)).catch(() => null);
+    logWhatsApp("sending WhatsApp Web cart item", {
+      recipient: maskRecipient(recipient),
+      product: item.originalName,
+      supermarket: item.supermarket,
+    });
+    const media = await createMessageMedia(getShareableImageUrl(item)).catch((error) => {
+      logWhatsAppError("failed to prepare WhatsApp media, falling back to text", error, {
+        product: item.originalName,
+      });
+      return null;
+    });
 
     if (media) {
       await activeClient.sendMessage(chatId, media, { caption });
+      logWhatsApp("sent WhatsApp Web image message", {
+        recipient: maskRecipient(recipient),
+        product: item.originalName,
+      });
       continue;
     }
 
     await activeClient.sendMessage(chatId, caption);
+    logWhatsApp("sent WhatsApp Web text message", {
+      recipient: maskRecipient(recipient),
+      product: item.originalName,
+    });
   }
 
   return {
@@ -264,8 +331,22 @@ async function sendWithMeta(input: SendCartInput): Promise<SendCartResult> {
   const recipient = resolveRecipient(input.to);
   const { accessToken, apiVersion, phoneNumberId } = getMetaConfig();
 
+  logWhatsApp("sending cart with Meta WhatsApp API", {
+    recipient: maskRecipient(recipient),
+    itemCount: input.items.length,
+    apiVersion,
+    phoneNumberId,
+    hasAccessToken: Boolean(accessToken),
+  });
+
   for (const item of input.items) {
     const imageUrl = getShareableImageUrl(item);
+    logWhatsApp("sending Meta WhatsApp cart item", {
+      recipient: maskRecipient(recipient),
+      product: item.originalName,
+      supermarket: item.supermarket,
+      imageUrl,
+    });
     const response = await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
       method: "POST",
       headers: {
@@ -286,8 +367,17 @@ async function sendWithMeta(input: SendCartInput): Promise<SendCartResult> {
 
     if (!response.ok) {
       const details = await response.text();
+      logWhatsAppError("Meta WhatsApp send failed", details, {
+        recipient: maskRecipient(recipient),
+        product: item.originalName,
+      });
       throw new Error(`Meta WhatsApp send failed: ${details}`);
     }
+
+    logWhatsApp("sent Meta WhatsApp image message", {
+      recipient: maskRecipient(recipient),
+      product: item.originalName,
+    });
   }
 
   return {
@@ -301,9 +391,15 @@ export async function getWhatsAppStatus(): Promise<WhatsAppStatus> {
   const provider = getProvider();
   const defaultTo = normalizeRecipient(process.env.WHATSAPP_DEFAULT_TO);
 
+  logWhatsApp("checking WhatsApp status", {
+    provider,
+    hasDefaultRecipient: Boolean(defaultTo),
+  });
+
   if (provider === "meta") {
     try {
       getMetaConfig();
+      logWhatsApp("Meta WhatsApp configuration is ready");
       return {
         provider,
         ready: true,
@@ -316,6 +412,7 @@ export async function getWhatsAppStatus(): Promise<WhatsAppStatus> {
         },
       };
     } catch (error) {
+      logWhatsAppError("Meta WhatsApp configuration is invalid", error);
       return {
         provider,
         ready: false,
@@ -332,7 +429,8 @@ export async function getWhatsAppStatus(): Promise<WhatsAppStatus> {
 
   try {
     await ensureWebJsClient();
-  } catch {
+  } catch (error) {
+    logWhatsAppError("failed while checking WhatsApp Web status", error);
   }
 
   return {
@@ -348,6 +446,12 @@ export async function sendCartToWhatsApp(input: SendCartInput) {
   if (!input.items.length) {
     throw new Error("Cart is empty.");
   }
+
+  logWhatsApp("starting cart send", {
+    provider: getProvider(),
+    itemCount: input.items.length,
+    hasExplicitRecipient: Boolean(input.to?.trim()),
+  });
 
   if (getProvider() === "meta") {
     return sendWithMeta(input);

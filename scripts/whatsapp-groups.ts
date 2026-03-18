@@ -21,6 +21,11 @@ async function main() {
   ensureWebJsProvider();
 
   const config = getWebJsConfig();
+  console.log("[whatsapp] listing groups", {
+    clientId: config.clientId,
+    dataPath: config.dataPath,
+    headless: config.headless,
+  });
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: config.clientId,
@@ -34,23 +39,29 @@ async function main() {
   });
 
   const ready = new Promise<void>((resolve) => {
-    client.once("ready", () => resolve());
+    client.once("ready", () => {
+      console.log("[whatsapp] groups command client is ready");
+      resolve();
+    });
   });
 
   const qr = new Promise<void>((_, reject) => {
     client.once("qr", () => {
+      console.log("[whatsapp] groups command received QR event");
       reject(new Error("WhatsApp is not linked yet. Open /cart, scan the QR code, then rerun this command."));
     });
   });
 
   const authFailure = new Promise<void>((_, reject) => {
     client.once("auth_failure", (message) => {
+      console.error("[whatsapp] groups command auth failure", { message });
       reject(new Error(`WhatsApp authentication failed: ${message}`));
     });
   });
 
   const disconnected = new Promise<void>((_, reject) => {
     client.once("disconnected", (reason) => {
+      console.error("[whatsapp] groups command disconnected", { reason: String(reason) });
       reject(new Error(`WhatsApp disconnected: ${String(reason)}`));
     });
   });
@@ -60,6 +71,9 @@ async function main() {
     await Promise.race([ready, qr, authFailure, disconnected]);
 
     const chats = await client.getChats();
+    console.log("[whatsapp] fetched chats for groups command", {
+      totalChats: chats.length,
+    });
     const groups = chats
       .filter((chat) => chat.isGroup)
       .map((chat) => ({
@@ -72,6 +86,8 @@ async function main() {
       console.log("No WhatsApp groups found for this linked account.");
       return;
     }
+
+    console.log("[whatsapp] resolved group count", { count: groups.length });
 
     for (const group of groups) {
       console.log(`${group.name}: ${group.id}`);
