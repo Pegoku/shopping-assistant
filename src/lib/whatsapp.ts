@@ -84,7 +84,17 @@ function getProvider(): WhatsAppProvider {
 }
 
 function normalizeRecipient(value?: string | null) {
-  const digits = value?.replace(/[^\d]/g, "") ?? "";
+  const raw = value?.trim() ?? "";
+
+  if (!raw) {
+    return null;
+  }
+
+  if (raw.endsWith("@g.us") || raw.endsWith("@c.us")) {
+    return raw;
+  }
+
+  const digits = raw.replace(/[^\d]/g, "");
   return digits || null;
 }
 
@@ -120,6 +130,10 @@ function getMetaConfig() {
 }
 
 function getChatId(recipient: string) {
+  if (recipient.endsWith("@g.us") || recipient.endsWith("@c.us")) {
+    return recipient;
+  }
+
   return `${recipient}@c.us`;
 }
 
