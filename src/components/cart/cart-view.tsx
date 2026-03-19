@@ -114,6 +114,12 @@ export function CartView() {
     }
   }
 
+  function handleClearChat() {
+    setRecipient(whatsAppStatus?.defaultTo ?? "");
+    setSendFeedback(null);
+    setStatusError(null);
+  }
+
   if (!items.length) {
     return (
       <section className="text-center p-6 border border-gray-100 bg-white shadow-sm rounded-3xl">
@@ -175,14 +181,23 @@ export function CartView() {
           {sendFeedback ? <p className="text-sm text-green-700">{sendFeedback}</p> : null}
           {statusError ? <p className="text-sm text-red-600">{statusError}</p> : null}
 
-          <button
-            className="inline-flex items-center justify-center px-4 py-3 bg-green-600 text-white hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed transition-colors rounded-full"
-            disabled={!canSend}
-            onClick={handleSendToWhatsApp}
-            type="button"
-          >
-            {isSending ? "Sending..." : "Send to WhatsApp"}
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              className="inline-flex items-center justify-center px-4 py-3 bg-green-600 text-white hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed transition-colors rounded-full"
+              disabled={!canSend}
+              onClick={handleSendToWhatsApp}
+              type="button"
+            >
+              {isSending ? "Sending..." : "Send to WhatsApp"}
+            </button>
+            <button
+              className="inline-flex items-center justify-center px-4 py-3 bg-white text-green-800 border border-green-200 hover:bg-green-100 transition-colors rounded-full"
+              onClick={handleClearChat}
+              type="button"
+            >
+              Clear chat
+            </button>
+          </div>
         </div>
 
         <button className="inline-flex items-center justify-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-full" onClick={clearCart} type="button">
