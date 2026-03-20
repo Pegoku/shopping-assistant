@@ -27,6 +27,7 @@ export function CartView() {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [sendFeedback, setSendFeedback] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [isClearingChat, setIsClearingChat] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -114,10 +115,34 @@ export function CartView() {
     }
   }
 
-  function handleClearChat() {
-    setRecipient(whatsAppStatus?.defaultTo ?? "");
+  async function handleClearChat() {
+    setIsClearingChat(true);
     setSendFeedback(null);
-    setStatusError(null);
+
+    try {
+      const response = await fetch("/api/whatsapp/clear-chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: recipient.trim() || undefined,
+        }),
+      });
+
+      const data = (await response.json()) as { error?: string; to?: string };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Failed to clear WhatsApp chat.");
+      }
+
+      setSendFeedback(`Cleared WhatsApp chat for ${data.to ?? resolvedRecipient}.`);
+      setStatusError(null);
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : "Failed to clear WhatsApp chat.");
+    } finally {
+      setIsClearingChat(false);
+    }
   }
 
   if (!items.length) {
@@ -192,10 +217,11 @@ export function CartView() {
             </button>
             <button
               className="inline-flex items-center justify-center px-4 py-3 bg-white text-green-800 border border-green-200 hover:bg-green-100 transition-colors rounded-full"
+              disabled={!resolvedRecipient || isClearingChat}
               onClick={handleClearChat}
               type="button"
             >
-              Clear chat
+              {isClearingChat ? "Clearing..." : "Clear chat"}
             </button>
           </div>
         </div>

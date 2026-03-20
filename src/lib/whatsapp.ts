@@ -28,6 +28,10 @@ type SendCartResult = {
   to: string;
 };
 
+type ClearChatInput = {
+  to?: string | null;
+};
+
 type WebJsState = WhatsAppStatus["auth"];
 
 type WebJsStore = {
@@ -396,6 +400,40 @@ async function sendWithMeta(input: SendCartInput): Promise<SendCartResult> {
   };
 }
 
+async function clearWebJsChat(input: ClearChatInput) {
+  await waitForWebJsReady();
+
+  const recipient = resolveRecipient(input.to);
+  const chatId = getChatId(recipient);
+  const activeClient = webJsStore.client;
+
+  if (!activeClient) {
+    throw new Error("WhatsApp Web client is unavailable.");
+  }
+
+  logWhatsApp("clearing WhatsApp Web chat", {
+    recipient: maskRecipient(recipient),
+    chatId,
+  });
+
+  const chat = await activeClient.getChatById(chatId).catch(() => null);
+
+  if (!chat) {
+    throw new Error("WhatsApp chat not found for this recipient.");
+  }
+
+  if (typeof chat.clearMessages !== "function") {
+    throw new Error("This WhatsApp chat cannot be cleared.");
+  }
+
+  await chat.clearMessages();
+
+  return {
+    provider: "webjs" as const,
+    to: recipient,
+  };
+}
+
 export async function getWhatsAppStatus(): Promise<WhatsAppStatus> {
   const provider = getProvider();
   const defaultTo = normalizeRecipient(process.env.WHATSAPP_DEFAULT_TO);
@@ -467,4 +505,12 @@ export async function sendCartToWhatsApp(input: SendCartInput) {
   }
 
   return sendWithWebJs(input);
+}
+
+export async function clearWhatsAppChat(input: ClearChatInput) {
+  if (getProvider() === "meta") {
+    throw new Error("Clearing chats is only supported with whatsapp-web.js.");
+  }
+
+  return clearWebJsChat(input);
 }
