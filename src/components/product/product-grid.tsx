@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddToCartButton } from "@/components/product/add-to-cart-button";
 import { PriceSparkline } from "@/components/product/price-sparkline";
 import { useLanguage } from "@/components/providers/language-provider";
+import { getShareableImageUrl } from "@/lib/cart-share";
 import type { ProductCardData, ProductQueryResult, ProductSortMode } from "@/lib/types";
 import { formatCurrency, formatPercent, formatUnitLabel } from "@/lib/utils";
 
@@ -260,7 +261,7 @@ function ProductCard({
             alt={product.originalName}
             fill
             sizes="(max-width: 768px) 50vw, 220px"
-            src={product.imageUrl.includes("images.ctfassets.net") ? `https://placehold.co/400x400/f8fafc/94a3b8.png?text=${encodeURIComponent(product.originalName)}` : product.imageUrl}
+            src={getShareableImageUrl(product)}
           />
         ) : (
           <div className="grid place-items-center h-full text-xs text-gray-400">No image</div>

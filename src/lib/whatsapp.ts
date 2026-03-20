@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 import type { CartItem } from "@/lib/types";
-import { buildCartItemWhatsAppCaption, getShareableImageUrl } from "@/lib/cart-share";
+import { buildCartItemWhatsAppCaption, getUpstreamImageUrl } from "@/lib/cart-share";
+import { getCachedImageAbsoluteUrl, getCachedImageFile } from "@/lib/image-cache";
 
 export type WhatsAppProvider = "webjs" | "meta";
 
@@ -273,18 +274,12 @@ async function waitForWebJsReady(timeoutMs = 30000) {
 }
 
 async function createMessageMedia(imageUrl: string) {
-  logWhatsApp("fetching WhatsApp media", { imageUrl });
-  const response = await fetch(imageUrl);
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image: ${response.status}`);
-  }
-
-  const contentType = response.headers.get("content-type") ?? "image/jpeg";
-  const data = Buffer.from(await response.arrayBuffer()).toString("base64");
+  logWhatsApp("loading cached WhatsApp media", { imageUrl });
+  const file = await getCachedImageFile(imageUrl);
+  const data = file.buffer.toString("base64");
   const { MessageMedia } = await import("whatsapp-web.js");
 
-  return new MessageMedia(contentType, data, getFileName(imageUrl));
+  return new MessageMedia(file.contentType, data, file.fileName || getFileName(imageUrl));
 }
 
 async function sendWithWebJs(input: SendCartInput): Promise<SendCartResult> {
@@ -311,7 +306,7 @@ async function sendWithWebJs(input: SendCartInput): Promise<SendCartResult> {
       product: item.originalName,
       supermarket: item.supermarket,
     });
-    const media = await createMessageMedia(getShareableImageUrl(item)).catch((error) => {
+    const media = await createMessageMedia(getUpstreamImageUrl(item)).catch((error) => {
       logWhatsAppError("failed to prepare WhatsApp media, falling back to text", error, {
         product: item.originalName,
       });
@@ -354,7 +349,7 @@ async function sendWithMeta(input: SendCartInput): Promise<SendCartResult> {
   });
 
   for (const item of input.items) {
-    const imageUrl = getShareableImageUrl(item);
+    const imageUrl = await getCachedImageAbsoluteUrl(getUpstreamImageUrl(item));
     logWhatsApp("sending Meta WhatsApp cart item", {
       recipient: maskRecipient(recipient),
       product: item.originalName,

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { AddToCartButton } from "@/components/product/add-to-cart-button";
 import { useLanguage } from "@/components/providers/language-provider";
+import { getShareableImageUrl } from "@/lib/cart-share";
 import type { ProductCardData, RecommendationResult, RecommendationSortMode } from "@/lib/types";
 import { formatCurrency, formatUnitLabel } from "@/lib/utils";
 
@@ -101,7 +102,7 @@ function RecommendationCard({ language, product }: { language: "en" | "es"; prod
     <article className="overflow-hidden rounded-2xl bg-gray-50 border border-gray-100 shadow-sm flex flex-col">
       <div className="relative aspect-square overflow-hidden bg-white flex items-center justify-center">
         {product.imageUrl ? (
-          <Image alt={product.originalName} fill sizes="240px" src={product.imageUrl} />
+          <Image alt={product.originalName} fill sizes="240px" src={getShareableImageUrl(product)} />
         ) : (
           <div className="grid place-items-center h-full text-xs text-gray-400">No image</div>
         )}
