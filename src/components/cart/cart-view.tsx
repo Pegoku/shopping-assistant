@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { FavouriteButton } from "@/components/product/favourite-button";
 import { useLanguage } from "@/components/providers/language-provider";
 import { useCart } from "@/components/providers/cart-provider";
 import { getShareableImageUrl } from "@/lib/cart-share";
@@ -259,9 +260,12 @@ export function CartView() {
                   </div>
                   <div className="flex flex-col items-start sm:items-end gap-2">
                     <strong>{formatCurrency(item.currentPrice)}</strong>
-                    <button className="p-0 text-blue-600 bg-transparent hover:text-blue-700 transition-colors" onClick={() => removeItem(item.id)} type="button">
-                      Remove
-                    </button>
+                    <div className="flex items-center gap-2 sm:flex-col sm:items-end">
+                      <FavouriteButton className="h-9 w-9" item={item} />
+                      <button className="p-0 text-blue-600 bg-transparent hover:text-blue-700 transition-colors" onClick={() => removeItem(item.id)} type="button">
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 </article>
               ))}

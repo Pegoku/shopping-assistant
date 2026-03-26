@@ -7,6 +7,7 @@ import type { CartItem } from "@/lib/types";
 type CartContextValue = {
   items: CartItem[];
   addItem: (item: CartItem) => void;
+  addItems: (items: CartItem[]) => void;
   removeItem: (id: string) => void;
   clearCart: () => void;
 };
@@ -45,6 +46,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
           }
 
           return [...current, item];
+        });
+      },
+      addItems: (itemsToAdd: CartItem[]) => {
+        setItems((current) => {
+          const existingIds = new Set(current.map((item) => item.id));
+          const nextItems = itemsToAdd.filter((item) => !existingIds.has(item.id));
+
+          if (!nextItems.length) {
+            return current;
+          }
+
+          return [...current, ...nextItems];
         });
       },
       removeItem: (id: string) => {

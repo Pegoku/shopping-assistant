@@ -3,8 +3,10 @@
 import Image from "next/image";
 import { useState } from "react";
 import { AddToCartButton } from "@/components/product/add-to-cart-button";
+import { FavouriteButton } from "@/components/product/favourite-button";
 import { useLanguage } from "@/components/providers/language-provider";
 import { getShareableImageUrl } from "@/lib/cart-share";
+import { toCartItem, toFavouriteItem } from "@/lib/product-items";
 import type { ProductCardData, RecommendationResult, RecommendationSortMode } from "@/lib/types";
 import { formatCurrency, formatUnitLabel } from "@/lib/utils";
 
@@ -107,6 +109,7 @@ function RecommendationCard({ language, product }: { language: "en" | "es"; prod
           <div className="grid place-items-center h-full text-xs text-gray-400">No image</div>
         )}
         <span className="absolute top-2 left-2 px-2 py-1 rounded-full bg-gray-900/80 text-white text-[10px] z-10">{product.supermarket}</span>
+        <FavouriteButton className="absolute bottom-2 right-2 z-10 h-10 w-10 shadow-sm" item={toFavouriteItem(product)} />
       </div>
 
       <div className="flex flex-col gap-3 p-3.5 flex-1">
@@ -122,18 +125,7 @@ function RecommendationCard({ language, product }: { language: "en" | "es"; prod
           </span>
         </div>
 
-        <AddToCartButton
-          item={{
-            id: product.id,
-            originalName: product.originalName,
-            genericNameEn: product.genericNameEn,
-            genericNameEs: product.genericNameEs,
-            supermarket: product.supermarket,
-            currentPrice: product.currentPrice,
-            quantityText: product.quantityText,
-            imageUrl: product.imageUrl,
-          }}
-        />
+        <AddToCartButton item={toCartItem(product)} />
       </div>
     </article>
   );

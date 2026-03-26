@@ -3,9 +3,11 @@
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddToCartButton } from "@/components/product/add-to-cart-button";
+import { FavouriteButton } from "@/components/product/favourite-button";
 import { PriceSparkline } from "@/components/product/price-sparkline";
 import { useLanguage } from "@/components/providers/language-provider";
 import { getShareableImageUrl } from "@/lib/cart-share";
+import { toCartItem, toFavouriteItem } from "@/lib/product-items";
 import type { ProductCardData, ProductQueryResult, ProductSortMode } from "@/lib/types";
 import { formatCurrency, formatPercent, formatUnitLabel } from "@/lib/utils";
 
@@ -267,6 +269,7 @@ function ProductCard({
           <div className="grid place-items-center h-full text-xs text-gray-400">No image</div>
         )}
         <span className="absolute top-2 left-2 px-2 py-1 rounded-full bg-gray-900/80 text-white text-[10px] z-10">{product.supermarket}</span>
+        <FavouriteButton className="absolute bottom-2 right-2 z-10 h-10 w-10 shadow-sm" item={toFavouriteItem(product)} />
         {product.isDealActive ? <span className="absolute top-2 right-2 max-w-[55%] truncate px-2 py-1 rounded-full bg-red-600 text-white text-[10px] z-10">{product.dealText ?? "Deal"}</span> : null}
       </div>
 
@@ -300,16 +303,7 @@ function ProductCard({
             {isSelectedForCompare ? "Selected for compare" : "Select to compare"}
           </button>
           <AddToCartButton
-            item={{
-              id: product.id,
-              originalName: product.originalName,
-              genericNameEn: product.genericNameEn,
-              genericNameEs: product.genericNameEs,
-              supermarket: product.supermarket,
-              currentPrice: product.currentPrice,
-              quantityText: product.quantityText,
-              imageUrl: product.imageUrl,
-            }}
+            item={toCartItem(product)}
           />
           {product.sourceUrl ? (
             <a className="inline-flex items-center justify-center px-3 py-2 text-xs bg-gray-50 hover:bg-gray-100 transition-colors rounded-full" href={product.sourceUrl} rel="noreferrer" target="_blank">

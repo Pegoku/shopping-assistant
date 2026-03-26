@@ -72,6 +72,8 @@ export type CartItem = {
   imageUrl: string | null;
 };
 
+export type FavouriteItem = CartItem;
+
 export type FetchRunSummary = {
   id: string;
   status: string;
