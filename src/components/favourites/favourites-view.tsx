@@ -51,35 +51,37 @@ export function FavouritesView() {
         <p className="text-sm text-gray-500">Use the heart to remove saved items, or add them back to the cart whenever you need them.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3.5">
         {items.map((item) => {
           const inCart = cartIds.has(item.id);
 
           return (
-            <article className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm" key={item.id}>
-              <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
+            <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm flex flex-col" key={item.id}>
+              <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
                 {item.imageUrl ? (
-                  <Image alt={item.originalName} fill sizes="(max-width: 768px) 100vw, 33vw" src={getShareableImageUrl(item)} />
+                  <Image alt={item.originalName} fill sizes="(max-width: 768px) 50vw, 220px" src={getShareableImageUrl(item)} />
                 ) : (
                   <div className="grid place-items-center h-full text-xs text-gray-400">No image</div>
                 )}
-                <span className="absolute top-3 left-3 px-2 py-1 rounded-full bg-gray-900/80 text-white text-[10px] z-10">{item.supermarket}</span>
-                <FavouriteButton className="absolute bottom-3 right-3 z-10 h-10 w-10 shadow-sm" item={item} />
+                <span className="absolute top-2 left-2 px-2 py-1 rounded-full bg-gray-900/80 text-white text-[10px] z-10">{item.supermarket}</span>
+                <FavouriteButton className="absolute bottom-2 right-2 z-10 h-10 w-10 shadow-sm" item={item} />
               </div>
 
-              <div className="flex flex-col gap-4 p-4">
-                <div>
+              <div className="flex flex-col gap-3 p-3.5 flex-1">
+                <div className="min-w-0">
                   <p className="m-0 text-[10px] tracking-wide text-gray-500 truncate">{item.originalName}</p>
-                  <h2 className="text-lg font-semibold leading-snug mt-1 text-gray-900">{language === "es" ? item.genericNameEs : item.genericNameEn}</h2>
-                  <p className="text-sm text-gray-500 mt-1">{item.quantityText}</p>
+                  <h2 className="text-sm font-semibold leading-snug mt-1 text-gray-900 line-clamp-2">{language === "es" ? item.genericNameEs : item.genericNameEn}</h2>
+                  <p className="text-xs text-gray-500 truncate mt-1">{item.quantityText}</p>
                 </div>
 
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-2">
                   <strong className="text-base text-gray-900">{formatCurrency(item.currentPrice)}</strong>
-                  {inCart ? <span className="text-xs font-medium text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full">In cart</span> : null}
+                  {inCart ? <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-1 rounded-full">In cart</span> : null}
                 </div>
 
-                <AddToCartButton item={item} />
+                <div className="mt-auto">
+                  <AddToCartButton item={item} />
+                </div>
               </div>
             </article>
           );
