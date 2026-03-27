@@ -7,6 +7,7 @@ import type { FavouriteItem } from "@/lib/types";
 type FavouritesContextValue = {
   items: FavouriteItem[];
   addItem: (item: FavouriteItem) => void;
+  addItems: (items: FavouriteItem[]) => void;
   removeItem: (id: string) => void;
   toggleItem: (item: FavouriteItem) => void;
   clearFavourites: () => void;
@@ -47,6 +48,18 @@ export function FavouritesProvider({ children }: { children: ReactNode }) {
           }
 
           return [...current, item];
+        });
+      },
+      addItems: (itemsToAdd: FavouriteItem[]) => {
+        setItems((current) => {
+          const existingIds = new Set(current.map((item) => item.id));
+          const nextItems = itemsToAdd.filter((item) => !existingIds.has(item.id));
+
+          if (!nextItems.length) {
+            return current;
+          }
+
+          return [...current, ...nextItems];
         });
       },
       removeItem: (id: string) => {

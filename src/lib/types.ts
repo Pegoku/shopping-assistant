@@ -74,6 +74,13 @@ export type CartItem = {
 
 export type FavouriteItem = CartItem;
 
+export type PastOrderPack = {
+  id: string;
+  sentAt: string;
+  recipient: string | null;
+  items: CartItem[];
+};
+
 export type FetchRunSummary = {
   id: string;
   status: string;

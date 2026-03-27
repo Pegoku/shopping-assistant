@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FavouriteButton } from "@/components/product/favourite-button";
 import { useLanguage } from "@/components/providers/language-provider";
 import { useCart } from "@/components/providers/cart-provider";
+import { usePastOrders } from "@/components/providers/past-orders-provider";
 import { getShareableImageUrl } from "@/lib/cart-share";
 import { formatCurrency } from "@/lib/utils";
 
@@ -22,6 +23,7 @@ type WhatsAppStatusPayload = {
 
 export function CartView() {
   const { items, removeItem, clearCart } = useCart();
+  const { addPack } = usePastOrders();
   const { language } = useLanguage();
   const [recipient, setRecipient] = useState("");
   const [whatsAppStatus, setWhatsAppStatus] = useState<WhatsAppStatusPayload | null>(null);
@@ -107,6 +109,7 @@ export function CartView() {
         throw new Error(data.error ?? "Failed to send WhatsApp messages.");
       }
 
+      addPack(items, data.to ?? resolvedRecipient);
       setSendFeedback(`Sent ${data.sentCount ?? items.length} product messages to ${data.to ?? resolvedRecipient}.`);
       setStatusError(null);
     } catch (error) {
