@@ -20,6 +20,7 @@ export type WhatsAppStatus = {
 type SendCartInput = {
   items: CartItem[];
   to?: string | null;
+  progressId?: string | null;
 };
 
 type SendCartResult = {
@@ -34,6 +35,14 @@ type ClearChatInput = {
 
 type WebJsState = WhatsAppStatus["auth"];
 
+type SendCartProgress = {
+  total: number;
+  sent: number;
+  status: "idle" | "sending" | "completed" | "error";
+  error: string | null;
+  updatedAt: number;
+};
+
 type WebJsStore = {
   client: any;
   clientPromise: Promise<void> | null;
@@ -44,6 +53,7 @@ type WebJsStore = {
 
 const globalStore = globalThis as typeof globalThis & {
   __shoppingAssistantWhatsappStore?: WebJsStore;
+  __shoppingAssistantWhatsappSendProgress?: Map<string, SendCartProgress>;
 };
 
 const webJsStore =
@@ -59,6 +69,45 @@ const webJsStore =
       error: null,
     },
   });
+
+const sendProgressStore = globalStore.__shoppingAssistantWhatsappSendProgress ?? (globalStore.__shoppingAssistantWhatsappSendProgress = new Map<string, SendCartProgress>());
+
+function normalizeProgressId(value?: string | null) {
+  const progressId = value?.trim();
+  return progressId ? progressId : null;
+}
+
+function setSendProgress(progressId: string | null, progress: SendCartProgress) {
+  if (!progressId) {
+    return;
+  }
+
+  sendProgressStore.set(progressId, progress);
+}
+
+function updateSendProgress(progressId: string | null, updater: (current: SendCartProgress) => SendCartProgress) {
+  if (!progressId) {
+    return;
+  }
+
+  const current = sendProgressStore.get(progressId);
+
+  if (!current) {
+    return;
+  }
+
+  sendProgressStore.set(progressId, updater(current));
+}
+
+function scheduleProgressCleanup(progressId: string | null, delayMs = 5 * 60 * 1000) {
+  if (!progressId) {
+    return;
+  }
+
+  setTimeout(() => {
+    sendProgressStore.delete(progressId);
+  }, delayMs).unref?.();
+}
 
 function logWhatsApp(message: string, details?: Record<string, unknown>) {
   if (details) {
@@ -290,6 +339,7 @@ async function sendWithWebJs(input: SendCartInput): Promise<SendCartResult> {
   await waitForWebJsReady();
 
   const recipient = resolveRecipient(input.to);
+  const progressId = normalizeProgressId(input.progressId);
   const chatId = getChatId(recipient);
   const activeClient = webJsStore.client;
 
@@ -303,7 +353,7 @@ async function sendWithWebJs(input: SendCartInput): Promise<SendCartResult> {
     throw new Error("WhatsApp Web client is unavailable.");
   }
 
-  for (const item of input.items) {
+  for (const [index, item] of input.items.entries()) {
     const caption = buildCartItemWhatsAppCaption(item);
     logWhatsApp("sending WhatsApp Web cart item", {
       recipient: maskRecipient(recipient),
@@ -323,6 +373,12 @@ async function sendWithWebJs(input: SendCartInput): Promise<SendCartResult> {
         recipient: maskRecipient(recipient),
         product: item.originalName,
       });
+      updateSendProgress(progressId, (current) => ({
+        ...current,
+        sent: index + 1,
+        status: index + 1 >= current.total ? "completed" : "sending",
+        updatedAt: Date.now(),
+      }));
       continue;
     }
 
@@ -331,6 +387,12 @@ async function sendWithWebJs(input: SendCartInput): Promise<SendCartResult> {
       recipient: maskRecipient(recipient),
       product: item.originalName,
     });
+    updateSendProgress(progressId, (current) => ({
+      ...current,
+      sent: index + 1,
+      status: index + 1 >= current.total ? "completed" : "sending",
+      updatedAt: Date.now(),
+    }));
   }
 
   return {
@@ -342,6 +404,7 @@ async function sendWithWebJs(input: SendCartInput): Promise<SendCartResult> {
 
 async function sendWithMeta(input: SendCartInput): Promise<SendCartResult> {
   const recipient = resolveRecipient(input.to);
+  const progressId = normalizeProgressId(input.progressId);
   const { accessToken, apiVersion, phoneNumberId } = getMetaConfig();
 
   logWhatsApp("sending cart with Meta WhatsApp API", {
@@ -352,7 +415,7 @@ async function sendWithMeta(input: SendCartInput): Promise<SendCartResult> {
     hasAccessToken: Boolean(accessToken),
   });
 
-  for (const item of input.items) {
+  for (const [index, item] of input.items.entries()) {
     const imageUrl = await getCachedImageAbsoluteUrl(getUpstreamImageUrl(item));
     logWhatsApp("sending Meta WhatsApp cart item", {
       recipient: maskRecipient(recipient),
@@ -391,6 +454,12 @@ async function sendWithMeta(input: SendCartInput): Promise<SendCartResult> {
       recipient: maskRecipient(recipient),
       product: item.originalName,
     });
+    updateSendProgress(progressId, (current) => ({
+      ...current,
+      sent: index + 1,
+      status: index + 1 >= current.total ? "completed" : "sending",
+      updatedAt: Date.now(),
+    }));
   }
 
   return {
@@ -494,17 +563,54 @@ export async function sendCartToWhatsApp(input: SendCartInput) {
     throw new Error("Cart is empty.");
   }
 
+  const progressId = normalizeProgressId(input.progressId);
+
+  setSendProgress(progressId, {
+    total: input.items.length,
+    sent: 0,
+    status: "sending",
+    error: null,
+    updatedAt: Date.now(),
+  });
+
   logWhatsApp("starting cart send", {
     provider: getProvider(),
     itemCount: input.items.length,
     hasExplicitRecipient: Boolean(input.to?.trim()),
   });
 
-  if (getProvider() === "meta") {
-    return sendWithMeta(input);
+  try {
+    if (getProvider() === "meta") {
+      return await sendWithMeta(input);
+    }
+
+    return await sendWithWebJs(input);
+  } catch (error) {
+    updateSendProgress(progressId, (current) => ({
+      ...current,
+      status: "error",
+      error: error instanceof Error ? error.message : "Failed to send WhatsApp messages.",
+      updatedAt: Date.now(),
+    }));
+    scheduleProgressCleanup(progressId);
+    throw error;
+  }
+}
+
+export function getSendCartProgress(progressId?: string | null) {
+  const normalizedProgressId = normalizeProgressId(progressId);
+
+  if (!normalizedProgressId) {
+    return null;
   }
 
-  return sendWithWebJs(input);
+  const progress = sendProgressStore.get(normalizedProgressId) ?? null;
+
+  if (progress?.status === "completed" || progress?.status === "error") {
+    scheduleProgressCleanup(normalizedProgressId);
+  }
+
+  return progress;
 }
 
 export async function clearWhatsAppChat(input: ClearChatInput) {

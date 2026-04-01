@@ -21,6 +21,14 @@ type WhatsAppStatusPayload = {
   };
 };
 
+type SendProgressPayload = {
+  total: number;
+  sent: number;
+  status: "idle" | "sending" | "completed" | "error";
+  error: string | null;
+  updatedAt: number;
+};
+
 export function CartView() {
   const { items, removeItem, clearCart } = useCart();
   const { addPack } = usePastOrders();
@@ -31,6 +39,8 @@ export function CartView() {
   const [sendFeedback, setSendFeedback] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isClearingChat, setIsClearingChat] = useState(false);
+  const [sendProgressId, setSendProgressId] = useState<string | null>(null);
+  const [sendProgress, setSendProgress] = useState<SendProgressPayload | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -68,6 +78,46 @@ export function CartView() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isSending || !sendProgressId) {
+      return;
+    }
+
+    const progressId = sendProgressId;
+    let isMounted = true;
+
+    async function loadProgress() {
+      try {
+        const response = await fetch(`/api/whatsapp/send-cart?progressId=${encodeURIComponent(progressId)}`, { cache: "no-store" });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as SendProgressPayload;
+
+        if (!isMounted) {
+          return;
+        }
+
+        setSendProgress(data);
+      } catch {
+        // Ignore transient polling failures while the send request is still running.
+      }
+    }
+
+    void loadProgress();
+
+    const interval = window.setInterval(() => {
+      void loadProgress();
+    }, 500);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(interval);
+    };
+  }, [isSending, sendProgressId]);
+
   const groups = useMemo(() => {
     return items.reduce<Record<string, typeof items>>((accumulator, item) => {
       accumulator[item.supermarket] = [...(accumulator[item.supermarket] ?? []), item];
@@ -86,10 +136,24 @@ export function CartView() {
   const resolvedRecipient = recipient.trim() || whatsAppStatus?.defaultTo || "";
   const providerReady = whatsAppStatus?.provider === "meta" ? whatsAppStatus.ready : whatsAppStatus?.ready;
   const canSend = Boolean(items.length && resolvedRecipient && providerReady && !isSending);
+  const progressTotal = sendProgress?.total ?? items.length;
+  const progressSent = sendProgress?.sent ?? 0;
+  const progressPercent = progressTotal ? Math.min(100, Math.round((progressSent / progressTotal) * 100)) : 0;
+  const showProgress = Boolean(sendProgress && (isSending || sendProgress.status === "completed"));
 
   async function handleSendToWhatsApp() {
+    const progressId = crypto.randomUUID();
+
     setIsSending(true);
     setSendFeedback(null);
+    setSendProgressId(progressId);
+    setSendProgress({
+      total: items.length,
+      sent: 0,
+      status: "sending",
+      error: null,
+      updatedAt: Date.now(),
+    });
 
     try {
       const response = await fetch("/api/whatsapp/send-cart", {
@@ -100,6 +164,7 @@ export function CartView() {
         body: JSON.stringify({
           items,
           to: recipient.trim() || undefined,
+          progressId,
         }),
       });
 
@@ -110,10 +175,28 @@ export function CartView() {
       }
 
       addPack(items, data.to ?? resolvedRecipient);
+      setSendProgress({
+        total: items.length,
+        sent: data.sentCount ?? items.length,
+        status: "completed",
+        error: null,
+        updatedAt: Date.now(),
+      });
       setSendFeedback(`Sent ${data.sentCount ?? items.length} product messages to ${data.to ?? resolvedRecipient}.`);
       setStatusError(null);
     } catch (error) {
-      setStatusError(error instanceof Error ? error.message : "Failed to send WhatsApp messages.");
+      const message = error instanceof Error ? error.message : "Failed to send WhatsApp messages.";
+      setSendProgress((current) =>
+        current
+          ? {
+              ...current,
+              status: "error",
+              error: message,
+              updatedAt: Date.now(),
+            }
+          : current,
+      );
+      setStatusError(message);
     } finally {
       setIsSending(false);
     }
@@ -205,6 +288,20 @@ export function CartView() {
             <p className="text-sm text-gray-600">
               {whatsAppStatus.ready ? "Ready to send product images." : `Status: ${whatsAppStatus.auth.state.replaceAll("_", " ")}.`}
             </p>
+          ) : null}
+
+          {showProgress ? (
+            <div className="flex flex-col gap-2 rounded-2xl bg-white p-3 border border-green-100">
+              <div className="flex items-center justify-between gap-3 text-sm text-gray-700">
+                <span>{isSending ? "Sending products..." : "WhatsApp send complete"}</span>
+                <span>
+                  {progressSent}/{progressTotal}
+                </span>
+              </div>
+              <div aria-valuemax={progressTotal} aria-valuemin={0} aria-valuenow={progressSent} className="h-2.5 overflow-hidden rounded-full bg-green-100" role="progressbar">
+                <div className="h-full rounded-full bg-green-500 transition-[width] duration-300" style={{ width: `${progressPercent}%` }} />
+              </div>
+            </div>
           ) : null}
 
           {sendFeedback ? <p className="text-sm text-green-700">{sendFeedback}</p> : null}
