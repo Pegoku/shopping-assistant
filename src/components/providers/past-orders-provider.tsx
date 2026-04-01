@@ -14,6 +14,20 @@ const PastOrdersContext = createContext<PastOrdersContextValue | null>(null);
 
 const storageKey = "shopping-assistant-past-orders";
 
+function normalizeQuantity(value: number | undefined) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
+}
+
+function normalizePack(pack: PastOrderPack): PastOrderPack {
+  return {
+    ...pack,
+    items: pack.items.map((item) => ({
+      ...item,
+      quantity: normalizeQuantity(item.quantity),
+    })),
+  };
+}
+
 export function PastOrdersProvider({ children }: { children: ReactNode }) {
   const [packs, setPacks] = useState<PastOrderPack[]>([]);
 
@@ -24,7 +38,7 @@ export function PastOrdersProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      setPacks(JSON.parse(saved) as PastOrderPack[]);
+      setPacks((JSON.parse(saved) as PastOrderPack[]).map(normalizePack));
     } catch {
       window.localStorage.removeItem(storageKey);
     }

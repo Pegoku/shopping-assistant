@@ -13,6 +13,9 @@ export function getShareableImageUrl(item: Pick<CartItem, "imageUrl" | "original
   return `/api/images/cache?url=${encodeURIComponent(getUpstreamImageUrl(item))}`;
 }
 
-export function buildCartItemWhatsAppCaption(item: Pick<CartItem, "originalName" | "currentPrice">) {
-  return `${item.originalName}\nWeb price: ${formatCurrency(item.currentPrice)}`;
+export function buildCartItemWhatsAppCaption(item: Pick<CartItem, "originalName" | "currentPrice" | "quantity">) {
+  const quantity = item.quantity > 0 ? item.quantity : 1;
+  const lineTotal = item.currentPrice * quantity;
+
+  return `${item.originalName}\nQuantity: ${quantity}\nWeb price: ${formatCurrency(item.currentPrice)} each\nLine total: ${formatCurrency(lineTotal)}`;
 }

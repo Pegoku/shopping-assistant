@@ -18,6 +18,17 @@ const FavouritesContext = createContext<FavouritesContextValue | null>(null);
 
 const storageKey = "shopping-assistant-favourites";
 
+function normalizeQuantity(value: number | undefined) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
+}
+
+function normalizeFavouriteItem(item: FavouriteItem): FavouriteItem {
+  return {
+    ...item,
+    quantity: normalizeQuantity(item.quantity),
+  };
+}
+
 export function FavouritesProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<FavouriteItem[]>([]);
 
@@ -28,7 +39,7 @@ export function FavouritesProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      setItems(JSON.parse(saved) as FavouriteItem[]);
+      setItems((JSON.parse(saved) as FavouriteItem[]).map(normalizeFavouriteItem));
     } catch {
       window.localStorage.removeItem(storageKey);
     }
@@ -47,13 +58,13 @@ export function FavouritesProvider({ children }: { children: ReactNode }) {
             return current;
           }
 
-          return [...current, item];
+          return [...current, normalizeFavouriteItem(item)];
         });
       },
       addItems: (itemsToAdd: FavouriteItem[]) => {
         setItems((current) => {
           const existingIds = new Set(current.map((item) => item.id));
-          const nextItems = itemsToAdd.filter((item) => !existingIds.has(item.id));
+          const nextItems = itemsToAdd.filter((item) => !existingIds.has(item.id)).map(normalizeFavouriteItem);
 
           if (!nextItems.length) {
             return current;
@@ -71,7 +82,7 @@ export function FavouritesProvider({ children }: { children: ReactNode }) {
             return current.filter((entry) => entry.id !== item.id);
           }
 
-          return [...current, item];
+           return [...current, normalizeFavouriteItem(item)];
         });
       },
       clearFavourites: () => setItems([]),

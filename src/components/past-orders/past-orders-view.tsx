@@ -53,7 +53,8 @@ export function PastOrdersView() {
 
       <div className="flex flex-col gap-4">
         {packs.map((pack) => {
-          const packTotal = pack.items.reduce((sum, item) => sum + item.currentPrice, 0);
+          const packTotal = pack.items.reduce((sum, item) => sum + item.currentPrice * item.quantity, 0);
+          const packUnits = pack.items.reduce((sum, item) => sum + item.quantity, 0);
           const itemsNotInCart = pack.items.filter((item) => !cartIds.has(item.id));
           const itemsNotInFavourites = pack.items.filter((item) => !favouriteIds.has(item.id));
 
@@ -62,7 +63,7 @@ export function PastOrdersView() {
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <p className="text-xs tracking-wide uppercase text-gray-500 font-medium">Pack sent {formatPackDate(pack.sentAt)}</p>
-                  <h2 className="text-2xl sm:text-3xl font-bold leading-snug mt-2 text-gray-900">{pack.items.length} items</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold leading-snug mt-2 text-gray-900">{packUnits} units across {pack.items.length} products</h2>
                   <p className="text-sm text-gray-500 mt-1">{pack.recipient ? `Sent to ${pack.recipient}` : "Sent without a saved recipient"}</p>
                 </div>
 
@@ -108,11 +109,11 @@ export function PastOrdersView() {
                           <p className="m-0 text-[10px] uppercase tracking-wide text-gray-500">{item.supermarket}</p>
                           <h3 className="text-base font-semibold leading-snug mt-1 text-gray-900 line-clamp-2">{item.originalName}</h3>
                           <p className="text-sm text-gray-500 mt-1 line-clamp-1">{language === "es" ? item.genericNameEs : item.genericNameEn}</p>
-                          <p className="text-sm text-gray-500 line-clamp-1">{item.quantityText}</p>
+                          <p className="text-sm text-gray-500 line-clamp-1">{item.quantityText} · Qty {item.quantity}</p>
                         </div>
 
                         <div className="flex items-center justify-between gap-3">
-                          <strong className="text-base text-gray-900">{formatCurrency(item.currentPrice)}</strong>
+                          <strong className="text-base text-gray-900">{formatCurrency(item.currentPrice * item.quantity)}</strong>
                           {inCart ? <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-1 rounded-full">In cart</span> : null}
                         </div>
 

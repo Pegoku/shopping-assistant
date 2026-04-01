@@ -15,6 +15,7 @@ export function toCartItem(product: ProductListItem): CartItem {
     currentPrice: product.currentPrice,
     quantityText: product.quantityText,
     imageUrl: product.imageUrl,
+    quantity: 1,
   };
 }
 

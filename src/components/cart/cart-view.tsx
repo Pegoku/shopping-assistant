@@ -30,7 +30,7 @@ type SendProgressPayload = {
 };
 
 export function CartView() {
-  const { items, removeItem, clearCart } = useCart();
+  const { items, incrementItemQuantity, decrementItemQuantity, removeItem, clearCart } = useCart();
   const { addPack } = usePastOrders();
   const { language } = useLanguage();
   const [recipient, setRecipient] = useState("");
@@ -128,11 +128,13 @@ export function CartView() {
   const totals = useMemo(() => {
     return Object.entries(groups).map(([store, storeItems]) => ({
       store,
-      subtotal: storeItems.reduce((sum, item) => sum + item.currentPrice, 0),
+      subtotal: storeItems.reduce((sum, item) => sum + item.currentPrice * item.quantity, 0),
+      itemCount: storeItems.reduce((sum, item) => sum + item.quantity, 0),
     }));
   }, [groups]);
 
   const total = totals.reduce((sum, entry) => sum + entry.subtotal, 0);
+  const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
   const resolvedRecipient = recipient.trim() || whatsAppStatus?.defaultTo || "";
   const providerReady = whatsAppStatus?.provider === "meta" ? whatsAppStatus.ready : whatsAppStatus?.ready;
   const canSend = Boolean(items.length && resolvedRecipient && providerReady && !isSending);
@@ -246,11 +248,11 @@ export function CartView() {
       <div className="flex flex-col gap-4 p-6 border border-gray-100 bg-white shadow-sm rounded-3xl">
         <p className="text-xs tracking-wide uppercase text-gray-500 font-medium">Trip planner</p>
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold leading-tight mt-2 text-gray-900">{Object.keys(groups).length} supermarkets to visit</h1>
-        <p>Total basket: {formatCurrency(total)}</p>
+        <p>Total basket: {formatCurrency(total)} for {totalUnits} units</p>
         <div className="flex flex-col gap-3.5">
           {totals.map((entry) => (
             <div className="flex justify-between items-center p-4 rounded-xl bg-gray-50 border border-gray-100" key={entry.store}>
-              <span>{entry.store}</span>
+              <span>{entry.store} · {entry.itemCount} units</span>
               <strong>{formatCurrency(entry.subtotal)}</strong>
             </div>
           ))}
@@ -338,9 +340,9 @@ export function CartView() {
             <div className="flex flex-col sm:flex-row justify-between gap-3 items-start sm:items-center">
               <div>
                 <p className="text-xs tracking-wide uppercase text-gray-500 font-medium">{store}</p>
-                <h2 className="text-xl sm:text-2xl font-bold leading-snug mt-1 text-gray-900">{storeItems.length} items</h2>
+                <h2 className="text-xl sm:text-2xl font-bold leading-snug mt-1 text-gray-900">{storeItems.reduce((sum, item) => sum + item.quantity, 0)} units</h2>
               </div>
-              <strong>{formatCurrency(storeItems.reduce((sum, item) => sum + item.currentPrice, 0))}</strong>
+              <strong>{formatCurrency(storeItems.reduce((sum, item) => sum + item.currentPrice * item.quantity, 0))}</strong>
             </div>
 
             <div className="flex flex-col gap-4">
@@ -359,7 +361,28 @@ export function CartView() {
                     <p>{item.quantityText}</p>
                   </div>
                   <div className="flex flex-col items-start sm:items-end gap-2">
-                    <strong>{formatCurrency(item.currentPrice)}</strong>
+                    <strong>{formatCurrency(item.currentPrice * item.quantity)}</strong>
+                    <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-2 py-1">
+                      <button
+                        aria-label={`Decrease quantity for ${item.originalName}`}
+                        className="grid h-8 w-8 place-items-center rounded-full bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50"
+                        disabled={item.quantity <= 1}
+                        onClick={() => decrementItemQuantity(item.id)}
+                        type="button"
+                      >
+                        -
+                      </button>
+                      <span className="min-w-8 text-center text-sm font-medium text-gray-900">{item.quantity}</span>
+                      <button
+                        aria-label={`Increase quantity for ${item.originalName}`}
+                        className="grid h-8 w-8 place-items-center rounded-full bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+                        onClick={() => incrementItemQuantity(item.id)}
+                        type="button"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500">{formatCurrency(item.currentPrice)} each</p>
                     <div className="flex items-center gap-2 sm:flex-col sm:items-end">
                       <FavouriteButton className="h-9 w-9" item={item} />
                       <button className="p-0 text-blue-600 bg-transparent hover:text-blue-700 transition-colors" onClick={() => removeItem(item.id)} type="button">

@@ -70,6 +70,7 @@ export type CartItem = {
   currentPrice: number;
   quantityText: string;
   imageUrl: string | null;
+  quantity: number;
 };
 
 export type FavouriteItem = CartItem;
