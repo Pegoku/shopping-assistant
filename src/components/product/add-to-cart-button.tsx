@@ -27,7 +27,7 @@ export function AddToCartButton({ item }: { item: CartItem }) {
       >
         -
       </button>
-      <button className="min-w-0 flex-1 px-4 py-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors" onClick={() => incrementItemQuantity(item.id)} type="button">
+      <button className="min-w-0 flex-1 px-4 py-3 bg-blue-300 text-white rounded-full hover:bg-blue-400 transition-colors" onClick={() => incrementItemQuantity(item.id)} type="button">
         {`Added: ${quantity}`}
       </button>
       <button
