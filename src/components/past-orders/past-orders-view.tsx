@@ -92,8 +92,6 @@ export function PastOrdersView() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
                 {pack.items.map((item) => {
-                  const inCart = cartIds.has(item.id);
-
                   return (
                     <article className="grid grid-cols-[88px_1fr] gap-4 items-center p-3.5 border border-gray-100 rounded-2xl bg-white/50" key={`${pack.id}-${item.id}`}>
                       <div className="relative w-[88px] h-[88px] rounded-xl overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 flex-shrink-0">
@@ -114,7 +112,6 @@ export function PastOrdersView() {
 
                         <div className="flex items-center justify-between gap-3">
                           <strong className="text-base text-gray-900">{formatCurrency(item.currentPrice * item.quantity)}</strong>
-                          {inCart ? <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-1 rounded-full">In cart</span> : null}
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap">

@@ -53,8 +53,6 @@ export function FavouritesView() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3.5">
         {items.map((item) => {
-          const inCart = cartIds.has(item.id);
-
           return (
             <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm flex flex-col" key={item.id}>
               <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
@@ -76,7 +74,6 @@ export function FavouritesView() {
 
                 <div className="flex items-center justify-between gap-2">
                   <strong className="text-base text-gray-900">{formatCurrency(item.currentPrice)}</strong>
-                  {inCart ? <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-1 rounded-full">In cart</span> : null}
                 </div>
 
                 <div className="mt-auto">
