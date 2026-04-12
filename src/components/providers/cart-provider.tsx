@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { CartItem } from "@/lib/types";
+import { normalizeCartItem } from "@/lib/list-items";
 
 type CartContextValue = {
   items: CartItem[];
@@ -18,42 +19,111 @@ const CartContext = createContext<CartContextValue | null>(null);
 
 const storageKey = "shopping-assistant-cart";
 
-function normalizeQuantity(value: number | undefined) {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
-}
+function readLocalItems() {
+  const saved = window.localStorage.getItem(storageKey);
 
-function normalizeCartItem(item: CartItem): CartItem {
-  return {
-    ...item,
-    quantity: normalizeQuantity(item.quantity),
-  };
+  if (!saved) {
+    return [] as CartItem[];
+  }
+
+  try {
+    return (JSON.parse(saved) as CartItem[]).map(normalizeCartItem);
+  } catch {
+    window.localStorage.removeItem(storageKey);
+    return [] as CartItem[];
+  }
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(storageKey);
-    if (!saved) {
-      return;
+    let isMounted = true;
+
+    async function persistItems(nextItems: CartItem[]) {
+      const response = await fetch("/api/cart", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ items: nextItems.map(normalizeCartItem) }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save shared cart.");
+      }
     }
 
-    try {
-      setItems((JSON.parse(saved) as CartItem[]).map(normalizeCartItem));
-    } catch {
-      window.localStorage.removeItem(storageKey);
+    async function loadItems() {
+      const localItems = readLocalItems();
+
+      try {
+        const response = await fetch("/api/cart", { cache: "no-store" });
+
+        if (!response.ok) {
+          throw new Error("Failed to load shared cart.");
+        }
+
+        const data = (await response.json()) as { items: CartItem[] };
+        const remoteItems = data.items.map(normalizeCartItem);
+        const nextItems = remoteItems.length ? remoteItems : localItems;
+
+        if (!isMounted) {
+          return;
+        }
+
+        setItems(nextItems);
+        window.localStorage.setItem(storageKey, JSON.stringify(nextItems));
+
+        if (!remoteItems.length && localItems.length) {
+          await persistItems(localItems);
+        }
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+
+        setItems(localItems);
+      }
     }
+
+    void loadItems();
+
+    const interval = window.setInterval(() => {
+      void loadItems();
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(interval);
+    };
   }, []);
 
-  useEffect(() => {
-    window.localStorage.setItem(storageKey, JSON.stringify(items));
-  }, [items]);
+  function updateItems(updater: (current: CartItem[]) => CartItem[]) {
+    let nextItems: CartItem[] = [];
+
+    setItems((current) => {
+      nextItems = updater(current).map(normalizeCartItem);
+      window.localStorage.setItem(storageKey, JSON.stringify(nextItems));
+      return nextItems;
+    });
+
+    void fetch("/api/cart", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ items: nextItems }),
+    }).catch(() => {
+      // Keep the UI responsive; a future poll will retry server sync.
+    });
+  }
 
   const value = useMemo(
     () => ({
       items,
       addItem: (item: CartItem) => {
-        setItems((current) => {
+        updateItems((current) => {
           const existingItem = current.find((entry) => entry.id === item.id);
 
           if (existingItem) {
@@ -64,7 +134,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         });
       },
       addItems: (itemsToAdd: CartItem[]) => {
-        setItems((current) => {
+        updateItems((current) => {
           const existingIds = new Set(current.map((item) => item.id));
           const nextItems = itemsToAdd.filter((item) => !existingIds.has(item.id)).map(normalizeCartItem);
 
@@ -76,10 +146,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
         });
       },
       incrementItemQuantity: (id: string) => {
-        setItems((current) => current.map((item) => (item.id === id ? { ...item, quantity: item.quantity + 1 } : item)));
+        updateItems((current) => current.map((item) => (item.id === id ? { ...item, quantity: item.quantity + 1 } : item)));
       },
       decrementItemQuantity: (id: string) => {
-        setItems((current) =>
+        updateItems((current) =>
           current.flatMap((item) => {
             if (item.id !== id) {
               return [item];
@@ -94,9 +164,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         );
       },
       removeItem: (id: string) => {
-        setItems((current) => current.filter((item) => item.id !== id));
+        updateItems((current) => current.filter((item) => item.id !== id));
       },
-      clearCart: () => setItems([]),
+      clearCart: () => updateItems(() => []),
     }),
     [items],
   );

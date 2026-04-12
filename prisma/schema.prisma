@@ -135,3 +135,33 @@ model AiNameCache {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
+model SharedCartItem {
+  id            String      @id
+  originalName  String
+  genericNameEn String
+  genericNameEs String
+  supermarket   Supermarket
+  currentPrice  Float
+  quantityText  String
+  imageUrl      String?
+  quantity      Int         @default(1)
+  sortOrder     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model SharedFavouriteItem {
+  id            String      @id
+  originalName  String
+  genericNameEn String
+  genericNameEs String
+  supermarket   Supermarket
+  currentPrice  Float
+  quantityText  String
+  imageUrl      String?
+  quantity      Int         @default(1)
+  sortOrder     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
