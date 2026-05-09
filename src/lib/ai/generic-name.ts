@@ -35,50 +35,73 @@ async function callAi<T>(messages: Array<{ role: "system" | "user"; content: str
   const retries = Math.max(1, Number(process.env.AI_ENRICHMENT_RETRIES ?? 2));
 
   for (let attempt = 1; attempt <= retries; attempt += 1) {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0,
-        max_tokens: maxTokens,
-        response_format: {
-          type: "json_object",
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      if (attempt < retries) {
-        continue;
-      }
-      return null;
-    }
-
-    const payload = (await response.json()) as {
-      choices?: Array<{
-        message?: {
-          content?: string;
-        };
-      }>;
-    };
-
-    const content = payload.choices?.[0]?.message?.content;
-
-    if (!content) {
-      if (attempt < retries) {
-        continue;
-      }
-      return null;
-    }
-
     try {
-      return JSON.parse(content) as T;
-    } catch {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: 0,
+          max_tokens: maxTokens,
+          response_format: {
+            type: "json_object",
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        if (attempt < retries) {
+          continue;
+        }
+        return null;
+      }
+
+      const responseText = await response.text();
+      let payload: {
+        choices?: Array<{
+          message?: {
+            content?: string;
+          };
+        }>;
+      };
+
+      try {
+        payload = JSON.parse(responseText) as typeof payload;
+      } catch (error) {
+        console.warn(`[AI] Invalid provider JSON response on attempt ${attempt}/${retries}: ${error instanceof Error ? error.message : "unknown error"}`);
+
+        if (attempt < retries) {
+          continue;
+        }
+
+        return null;
+      }
+
+      const content = payload.choices?.[0]?.message?.content;
+
+      if (!content) {
+        if (attempt < retries) {
+          continue;
+        }
+        return null;
+      }
+
+      try {
+        return JSON.parse(content) as T;
+      } catch (error) {
+        console.warn(`[AI] Invalid completion JSON on attempt ${attempt}/${retries}: ${error instanceof Error ? error.message : "unknown error"}`);
+
+        if (attempt === retries) {
+          return null;
+        }
+      }
+    } catch (error) {
+      console.warn(`[AI] Request failed on attempt ${attempt}/${retries}: ${error instanceof Error ? error.message : "unknown error"}`);
+
       if (attempt === retries) {
         return null;
       }
