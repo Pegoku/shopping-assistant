@@ -21,6 +21,13 @@ type AhProductRecord = {
   webPath?: string;
   salesUnitSize?: string;
   imagePack?: Array<{ small?: { url?: string } }>;
+  priceV2?: {
+    now?: { amount?: number };
+    was?: { amount?: number };
+    unitInfo?: { price?: { amount?: number }; description?: string };
+    discount?: { description?: string } | null;
+    promotionLabels?: Array<{ text?: string } | string>;
+  };
   [key: `priceV2(${string})`]:
     | {
         now?: { amount?: number };
@@ -72,6 +79,78 @@ function parseApolloState(html: string) {
   return JSON.parse(match[1].replace(/:undefined/g, ":null")) as AhApolloState;
 }
 
+function extractEscapedJsonObjectAt(text: string, start: number) {
+  let depth = 0;
+
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (char === "{") {
+      depth += 1;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+
+      if (depth === 0) {
+        return text.slice(start, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseEscapedJsonObject<T>(raw: string) {
+  return JSON.parse(JSON.parse(`"${raw}"`)) as T;
+}
+
+function parseNextProductsFromHtml(html: string) {
+  const marker = `\\"product\\":`;
+  const products: ScrapedProduct[] = [];
+  let position = 0;
+
+  while ((position = html.indexOf(marker, position)) !== -1) {
+    const objectStart = position + marker.length;
+    const raw = extractEscapedJsonObjectAt(html, objectStart);
+    position = objectStart;
+
+    if (!raw) {
+      continue;
+    }
+
+    try {
+      const product = parseEscapedJsonObject<AhProductRecord & { __typename?: string }>(raw);
+
+      if (product.__typename !== "Product" || !product.title) {
+        continue;
+      }
+
+      const parsedProduct = mapProductRecord(product);
+
+      if (parsedProduct) {
+        products.push(parsedProduct);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return products;
+}
+
+function getNextProductTaxonomyCount(html: string, taxonomyId: string) {
+  const idMarker = `\\"id\\":${taxonomyId}`;
+  const idIndex = html.indexOf(idMarker);
+
+  if (idIndex === -1) {
+    return 0;
+  }
+
+  const totalMatch = html.slice(idIndex, idIndex + 2000).match(/\\"totalProductCount\\":(\d+)/);
+  return totalMatch ? Number(totalMatch[1]) : 0;
+}
+
 function getSearchCategoryPayload(state: AhApolloState) {
   const root = state.ROOT_QUERY ?? {};
   const searchCategoryKey = Object.keys(root).find((key) => key.startsWith("searchCategory:"));
@@ -92,7 +171,7 @@ function getProductTaxonomyCount(state: AhApolloState, taxonomyId: string) {
 
 function extractPriceData(product: AhProductRecord) {
   const priceKey = Object.keys(product).find((key) => key.startsWith("priceV2("));
-  const priceData = (priceKey ? product[priceKey as keyof AhProductRecord] : undefined) as
+  const priceData = (product.priceV2 ?? (priceKey ? product[priceKey as keyof AhProductRecord] : undefined)) as
     | {
         now?: { amount?: number };
         was?: { amount?: number };
@@ -118,6 +197,37 @@ function extractPriceData(product: AhProductRecord) {
   };
 }
 
+function mapProductRecord(product: AhProductRecord) {
+  const quantityText = textContent(product.salesUnitSize) || "per item";
+  const quantity = parseQuantity(quantityText);
+  const price = extractPriceData(product);
+
+  if (price.currentPrice == null) {
+    return null;
+  }
+
+  const categories = product.category
+    ?.split("/")
+    .map((category) => textContent(category))
+    .filter(Boolean);
+
+  return {
+    supermarket: Supermarket.AH,
+    sourceId: String(product.id),
+    originalName: textContent(product.title),
+    quantityText,
+    unitAmount: quantity.unitAmount,
+    normalizedUnit: quantity.normalizedUnit ?? price.normalizedUnit,
+    currentPrice: price.currentPrice,
+    currentUnitPrice: price.currentUnitPrice,
+    imageUrl: product.imagePack?.[0]?.small?.url,
+    sourceUrl: absoluteUrl(baseUrl, product.webPath),
+    dealText: price.dealText,
+    isDealActive: price.isDealActive,
+    categories,
+  } satisfies ScrapedProduct;
+}
+
 function getProductKey(product: ScrapedProduct) {
   return product.sourceUrl ?? product.sourceId ?? `${product.originalName}::${product.quantityText}`;
 }
@@ -134,37 +244,36 @@ function parseProductsFromState(state: AhApolloState) {
       continue;
     }
 
-    const quantityText = textContent(product.salesUnitSize) || "per item";
-    const quantity = parseQuantity(quantityText);
-    const price = extractPriceData(product);
+    const parsedProduct = mapProductRecord(product);
 
-    if (!price.currentPrice) {
-      continue;
+    if (parsedProduct) {
+      products.push(parsedProduct);
     }
-
-    const categories = product.category
-      ?.split("/")
-      .map((category) => textContent(category))
-      .filter(Boolean);
-
-    products.push({
-      supermarket: Supermarket.AH,
-      sourceId: String(product.id),
-      originalName: textContent(product.title),
-      quantityText,
-      unitAmount: quantity.unitAmount,
-      normalizedUnit: quantity.normalizedUnit ?? price.normalizedUnit,
-      currentPrice: price.currentPrice,
-      currentUnitPrice: price.currentUnitPrice,
-      imageUrl: product.imagePack?.[0]?.small?.url,
-      sourceUrl: absoluteUrl(baseUrl, product.webPath),
-      dealText: price.dealText,
-      isDealActive: price.isDealActive,
-      categories,
-    });
   }
 
   return products;
+}
+
+function parseProductsFromHtml(html: string) {
+  try {
+    return parseProductsFromState(parseApolloState(html));
+  } catch (error) {
+    const products = parseNextProductsFromHtml(html);
+
+    if (products.length > 0) {
+      return products;
+    }
+
+    throw error;
+  }
+}
+
+function getProductCountFromHtml(html: string, taxonomyId: string) {
+  try {
+    return getProductTaxonomyCount(parseApolloState(html), taxonomyId);
+  } catch {
+    return getNextProductTaxonomyCount(html, taxonomyId);
+  }
 }
 
 async function scrapeCategory(
@@ -181,13 +290,12 @@ async function scrapeCategory(
 
   const taxonomyId = taxonomyMatch[1];
   const firstPageHtml = await fetchHtml(`${baseUrl}${path}`);
-  const firstPageState = parseApolloState(firstPageHtml);
-  const totalProducts = getProductTaxonomyCount(firstPageState, taxonomyId);
+  const totalProducts = getProductCountFromHtml(firstPageHtml, taxonomyId);
   const totalPages = Math.max(1, Math.ceil(totalProducts / 36));
   const pageLimit = getOptionalPageLimit();
   const finalPage = pageLimit ? Math.min(totalPages, pageLimit) : totalPages;
   console.log(`[AH] Category ${path} -> ${totalProducts} products across ${totalPages} pages${pageLimit ? ` (limited to ${finalPage})` : ""}`);
-  const products = parseProductsFromState(firstPageState);
+  const products = parseProductsFromHtml(firstPageHtml);
   let newProducts = 0;
 
   for (const product of products) {
@@ -215,8 +323,7 @@ async function scrapeCategory(
   const pageResults = await mapWithConcurrency(remainingPages, concurrency, async (page) => {
     try {
       const html = await fetchHtml(`${baseUrl}${path}?page=${page}&withOffset=true`);
-      const state = parseApolloState(html);
-      const pageProducts = parseProductsFromState(state);
+      const pageProducts = parseProductsFromHtml(html);
       return { page, pageProducts, error: null };
     } catch (error) {
       return {
@@ -314,9 +421,23 @@ export async function scrapeAlbertHeijn(
       categoriesTotal: finalCategories.length,
     });
 
-    const categoryProducts = await scrapeCategory(category.path, category.label, seenKeys, reportProgress);
+    let categoryProducts: ScrapedProduct[] = [];
+
+    try {
+      categoryProducts = await scrapeCategory(category.path, category.label, seenKeys, reportProgress);
+      console.log(`[AH] Completed ${category.label}: ${categoryProducts.length} products`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown category failure";
+      console.error(`[AH] Category ${category.label} failed: ${message}`);
+      await reportProgress?.({
+        store: "AH",
+        category: category.label,
+        message: `AH ${category.label} failed: ${message}`,
+        warning: true,
+      });
+    }
+
     completedCategories += 1;
-    console.log(`[AH] Completed ${category.label}: ${categoryProducts.length} products`);
     await reportProgress?.({
       store: "AH",
       category: category.label,
