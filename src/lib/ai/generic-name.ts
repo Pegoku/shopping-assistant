@@ -23,7 +23,7 @@ const fallbackNames = (originalName: string): GenericNames => ({
   spanish: createFallbackName(originalName),
 });
 
-async function callAi<T>(messages: Array<{ role: "system" | "user"; content: string }>): Promise<T | null> {
+async function callAi<T>(messages: Array<{ role: "system" | "user"; content: string }>, maxTokens = 900): Promise<T | null> {
   const apiKey = process.env.HACKCLUB_AI_API_KEY;
   const baseUrl = process.env.HACKCLUB_AI_BASE_URL;
   const model = process.env.HACKCLUB_AI_MODEL;
@@ -45,7 +45,7 @@ async function callAi<T>(messages: Array<{ role: "system" | "user"; content: str
         model,
         messages,
         temperature: 0,
-        max_tokens: 900,
+        max_tokens: maxTokens,
         response_format: {
           type: "json_object",
         },
@@ -111,6 +111,8 @@ async function mapWithConcurrency<T, R>(
 
 async function requestBatchNames(batch: string[]) {
   const prompt = batch.map((name, itemIndex) => `${itemIndex + 1}. ${name}`).join("\n");
+  const maxTokens = Math.max(900, batch.length * 80);
+
   return callAi<{
     items?: BatchAiItem[];
   }>([
@@ -123,7 +125,7 @@ async function requestBatchNames(batch: string[]) {
       role: "user",
       content: `Normalize these grocery product names:\n${prompt}`,
     },
-  ]);
+  ], maxTokens);
 }
 
 function sanitizeBatchItems(items: BatchAiItem[] | undefined, batch: string[]) {
@@ -207,12 +209,13 @@ export async function generateGenericNamesBatch(
   }
 
   const batchSize = Number(process.env.AI_ENRICHMENT_BATCH_SIZE ?? 50);
-  const concurrency = Math.max(1, Number(process.env.AI_ENRICHMENT_CONCURRENCY ?? 4));
   const batches = Array.from({ length: Math.ceil(uncachedNames.length / batchSize) }, (_, index) => ({
     batch: uncachedNames.slice(index * batchSize, index * batchSize + batchSize),
     batchIndex: index + 1,
   }));
   const totalBatches = batches.length;
+  const configuredConcurrency = Number(process.env.AI_ENRICHMENT_CONCURRENCY ?? totalBatches);
+  const concurrency = Math.max(1, Number.isFinite(configuredConcurrency) ? configuredConcurrency : totalBatches);
   let processedNames = cachedRows.length;
 
   const batchResults = await mapWithConcurrency(batches, concurrency, async ({ batch, batchIndex }) => {
