@@ -11,7 +11,7 @@ Required values:
 ```env
 WHATSAPP_PROVIDER=webjs
 WHATSAPP_DEFAULT_TO=31612345678
-APP_BASE_URL=http://localhost:3000
+APP_BASE_URL=http://YOUR-LAN-IP:3000
 WHATSAPP_SESSION_NAME=shopping-assistant
 WHATSAPP_WEBJS_DATA_PATH=.wwebjs_auth
 WHATSAPP_WEBJS_HEADLESS=true
@@ -27,6 +27,14 @@ How it works:
 
 The linked session is stored in `.wwebjs_auth/`.
 Cached product images are stored in `.image-cache/` after the first load.
+
+If you want to open the app from another PC on the same network:
+
+1. Start the app with `bun run dev` or `bun run start`
+2. Open `http://YOUR-LAN-IP:3000` from the other PC
+3. Set `APP_BASE_URL` to that same LAN URL so cached image links resolve correctly
+
+Using `localhost` only works from the same machine that is running the app.
 
 ## Meta WhatsApp Cloud API
 
