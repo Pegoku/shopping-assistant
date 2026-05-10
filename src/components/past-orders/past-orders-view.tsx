@@ -22,6 +22,24 @@ type DraftItem = {
   product: ProductCardData | null;
 };
 
+type DraftOrder = {
+  localId: string;
+  items: DraftItem[];
+  meta: {
+    rawReceiptText: string | null;
+    receiptImageName: string | null;
+    total: number | null;
+  };
+};
+
+type ImportPage = {
+  id: string;
+  label: string;
+  file: File;
+  previewUrl: string;
+  group: number;
+};
+
 type PastOrdersViewProps = {
   initialOrders: PastOrderData[];
   initialPeople: PersonData[];
@@ -39,12 +57,29 @@ function newDraftItem(): DraftItem {
   };
 }
 
+function newDraftOrder(): DraftOrder {
+  return {
+    localId: crypto.randomUUID(),
+    items: [newDraftItem()],
+    meta: { rawReceiptText: null, receiptImageName: null, total: null },
+  };
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
 function productToCartItem(product: ProductCardData, quantity: number): CartItem {
   return { ...toCartItem(product), quantity: Math.max(1, Math.floor(quantity)) };
+}
+
+function normalizeReceiptCode(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 function buildPeopleSummary(people: PersonData[], orders: PastOrderData[]) {
@@ -91,15 +126,20 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
   const [payerId, setPayerId] = useState(initialPeople[0]?.id ?? "");
   const [participantIds, setParticipantIds] = useState<string[]>(initialPeople.slice(0, 2).map((person) => person.id));
   const [orderedAt, setOrderedAt] = useState(() => new Date().toISOString().slice(0, 16));
-  const [draftItems, setDraftItems] = useState<DraftItem[]>([newDraftItem()]);
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [receiptMeta, setReceiptMeta] = useState<{ rawReceiptText: string | null; receiptImageName: string | null; total: number | null }>({ rawReceiptText: null, receiptImageName: null, total: null });
+  const [draftOrders, setDraftOrders] = useState<DraftOrder[]>([newDraftOrder()]);
+  const [activeDraftOrderIndex, setActiveDraftOrderIndex] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importPages, setImportPages] = useState<ImportPage[]>([]);
+  const [importMode, setImportMode] = useState<"all" | "individual" | "manual">("all");
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const cartIds = useMemo(() => new Set(cartItems.map((item) => item.id)), [cartItems]);
   const favouriteIds = useMemo(() => new Set(favouriteItems.map((item) => item.id)), [favouriteItems]);
   const peopleSummary = useMemo(() => buildPeopleSummary(people, orders), [orders, people]);
+  const activeDraftOrder = draftOrders[Math.min(activeDraftOrderIndex, draftOrders.length - 1)] ?? draftOrders[0];
+  const draftItems = activeDraftOrder?.items ?? [];
+  const receiptMeta = activeDraftOrder?.meta ?? { rawReceiptText: null, receiptImageName: null, total: null };
   const draftTotal = draftItems.reduce((sum, item) => sum + item.totalPrice, 0);
 
   async function addPerson() {
@@ -125,9 +165,9 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
     setPersonName("");
   }
 
-  async function scanReceipt() {
-    if (!receiptFile) {
-      setFeedback("Choose a receipt image or PDF first.");
+  async function scanReceiptGroups(groups: ImportPage[][]) {
+    if (!groups.length) {
+      setFeedback("Add receipt pages before scanning.");
       return;
     }
 
@@ -135,22 +175,38 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
     setFeedback(null);
 
     try {
-      const formData = new FormData();
-      formData.set("supermarket", supermarket);
-      formData.set("image", receiptFile);
-      const response = await fetch("/api/past-orders/scan-receipt", { method: "POST", body: formData });
-      const payload = (await response.json()) as { result?: ReceiptScanResult & { receiptImageName?: string | null }; error?: string };
+      const scannedOrders: DraftOrder[] = [];
 
-      if (!response.ok || !payload.result) {
-        throw new Error(payload.error ?? "Failed to scan receipt");
+      for (const group of groups) {
+        const formData = new FormData();
+        formData.set("supermarket", supermarket);
+        group.forEach((page) => formData.append("files", page.file));
+        const response = await fetch("/api/past-orders/scan-receipt", { method: "POST", body: formData });
+        const payload = (await response.json()) as { result?: ReceiptScanResult & { receiptImageName?: string | null }; error?: string };
+
+        if (!response.ok || !payload.result) {
+          throw new Error(payload.error ?? "Failed to scan receipt");
+        }
+
+        scannedOrders.push({
+          localId: crypto.randomUUID(),
+          items: payload.result.items.map((item) => ({ ...item, localId: crypto.randomUUID() })),
+          meta: {
+            rawReceiptText: payload.result.rawReceiptText,
+            receiptImageName: payload.result.receiptImageName ?? group.map((page) => page.label).join(", "),
+            total: payload.result.total,
+          },
+        });
+
+        if (payload.result.orderedAt) {
+          setOrderedAt(new Date(payload.result.orderedAt).toISOString().slice(0, 16));
+        }
       }
 
-      setDraftItems(payload.result.items.map((item) => ({ ...item, localId: crypto.randomUUID() })));
-      setReceiptMeta({ rawReceiptText: payload.result.rawReceiptText, receiptImageName: payload.result.receiptImageName ?? receiptFile.name, total: payload.result.total });
-      if (payload.result.orderedAt) {
-        setOrderedAt(new Date(payload.result.orderedAt).toISOString().slice(0, 16));
-      }
-      setFeedback(`Scanned ${payload.result.items.length} lines. Review product links before saving.`);
+      setDraftOrders(scannedOrders.length ? scannedOrders : [newDraftOrder()]);
+      setActiveDraftOrderIndex(0);
+      setImportOpen(false);
+      setFeedback(`Scanned ${scannedOrders.length} order${scannedOrders.length === 1 ? "" : "s"}. Review product links before saving.`);
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Failed to scan receipt");
     } finally {
@@ -199,10 +255,12 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
       }
 
       setOrders((current) => [payload.order!, ...current]);
-      setDraftItems([newDraftItem()]);
-      setReceiptMeta({ rawReceiptText: null, receiptImageName: null, total: null });
-      setReceiptFile(null);
-      setFeedback("Order saved.");
+      setDraftOrders((current) => {
+        const next = current.filter((_, index) => index !== activeDraftOrderIndex);
+        return next.length ? next : [newDraftOrder()];
+      });
+      setActiveDraftOrderIndex((current) => Math.max(0, Math.min(current, draftOrders.length - 2)));
+      setFeedback(draftOrders.length > 1 ? "Order saved. Continue with the next scanned order." : "Order saved.");
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Failed to save order");
     } finally {
@@ -211,7 +269,96 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
   }
 
   function updateDraftItem(localId: string, patch: Partial<DraftItem>) {
-    setDraftItems((current) => current.map((item) => (item.localId === localId ? { ...item, ...patch } : item)));
+    setDraftOrders((current) => current.map((order, index) => (index === activeDraftOrderIndex ? { ...order, items: order.items.map((item) => (item.localId === localId ? { ...item, ...patch } : item)) } : order)));
+  }
+
+  function addDraftItem() {
+    setDraftOrders((current) => current.map((order, index) => (index === activeDraftOrderIndex ? { ...order, items: [...order.items, newDraftItem()] } : order)));
+  }
+
+  function removeDraftItem(localId: string) {
+    setDraftOrders((current) => current.map((order, index) => (index === activeDraftOrderIndex ? { ...order, items: order.items.filter((item) => item.localId !== localId) } : order)));
+  }
+
+  async function loadImportFiles(files: FileList | null) {
+    if (!files?.length) {
+      return;
+    }
+
+    setLoading(true);
+    setFeedback(null);
+
+    try {
+      const { PDFDocument } = await import("pdf-lib");
+      const pages: ImportPage[] = [];
+
+      for (const file of Array.from(files)) {
+        if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+          const sourceBytes = await file.arrayBuffer();
+          const sourcePdf = await PDFDocument.load(sourceBytes);
+          const pageCount = sourcePdf.getPageCount();
+
+          for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+            const singlePagePdf = await PDFDocument.create();
+            const [copiedPage] = await singlePagePdf.copyPages(sourcePdf, [pageIndex]);
+            singlePagePdf.addPage(copiedPage);
+            const pageBytes = await singlePagePdf.save();
+            const pageBuffer = new ArrayBuffer(pageBytes.byteLength);
+            new Uint8Array(pageBuffer).set(pageBytes);
+            const pageFile = new File([pageBuffer], `${file.name.replace(/\.pdf$/i, "")}-page-${pageIndex + 1}.pdf`, { type: "application/pdf" });
+            pages.push({
+              id: crypto.randomUUID(),
+              label: `${file.name} · page ${pageIndex + 1}/${pageCount}`,
+              file: pageFile,
+              previewUrl: URL.createObjectURL(pageFile),
+              group: pages.length + 1,
+            });
+          }
+          continue;
+        }
+
+        if (file.type.startsWith("image/")) {
+          pages.push({
+            id: crypto.randomUUID(),
+            label: file.name,
+            file,
+            previewUrl: URL.createObjectURL(file),
+            group: pages.length + 1,
+          });
+        }
+      }
+
+      setImportPages(pages);
+      setImportMode(pages.length > 1 ? "individual" : "all");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Failed to read receipt files");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function getImportGroups() {
+    if (importMode === "all") {
+      return importPages.length ? [importPages] : [];
+    }
+
+    if (importMode === "individual") {
+      return importPages.map((page) => [page]);
+    }
+
+    const byGroup = new Map<number, ImportPage[]>();
+
+    for (const page of importPages) {
+      byGroup.set(page.group, [...(byGroup.get(page.group) ?? []), page]);
+    }
+
+    return Array.from(byGroup.entries())
+      .sort(([left], [right]) => left - right)
+      .map(([, pages]) => pages);
+  }
+
+  function updateImportPageGroup(pageId: string, group: number) {
+    setImportPages((current) => current.map((page) => (page.id === pageId ? { ...page, group: Math.max(1, group) } : page)));
   }
 
   async function toggleSettlementPaid(order: PastOrderData, row: PastOrderData["settlement"][number]) {
@@ -260,6 +407,26 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
 
       setOrders((current) => current.map((entry) => (entry.id === payload.order!.id ? payload.order! : entry)));
     }
+  }
+
+  function propagateProductRelink(supermarket: "AH" | "JUMBO", receiptName: string, product: ProductCardData | null) {
+    const normalized = normalizeReceiptCode(receiptName);
+    setOrders((current) =>
+      current.map((order) =>
+        order.supermarket === supermarket
+          ? {
+              ...order,
+              items: order.items.map((item) => (normalizeReceiptCode(item.receiptName) === normalized ? { ...item, product } : item)),
+            }
+          : order,
+      ),
+    );
+    setDraftOrders((current) =>
+      current.map((order) => ({
+        ...order,
+        items: order.items.map((item) => (normalizeReceiptCode(item.receiptName) === normalized ? { ...item, product } : item)),
+      })),
+    );
   }
 
   return (
@@ -345,7 +512,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
         </div>
 
         <div className="flex flex-col gap-5 rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <label className="flex flex-col gap-2 text-sm">
               Store
               <select onChange={(event) => setSupermarket(event.target.value as "AH" | "JUMBO")} value={supermarket}>
@@ -364,33 +531,56 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
               Date
               <input onChange={(event) => setOrderedAt(event.target.value)} type="datetime-local" value={orderedAt} />
             </label>
-            <label className="flex flex-col gap-2 text-sm">
-              Receipt image or PDF
-              <input accept="image/*,application/pdf" onChange={(event) => setReceiptFile(event.target.files?.[0] ?? null)} type="file" />
-            </label>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button className="rounded-full bg-blue-600 px-4 py-3 text-sm text-white disabled:opacity-50" disabled={loading || !receiptFile} onClick={scanReceipt} type="button">{loading ? "Working..." : "Scan ticket with AI"}</button>
-            <button className="rounded-full bg-gray-100 px-4 py-3 text-sm text-gray-700" onClick={() => setDraftItems((current) => [...current, newDraftItem()])} type="button">Add manual item</button>
+            <button className="rounded-full bg-blue-600 px-4 py-3 text-sm text-white disabled:opacity-50" disabled={loading} onClick={() => setImportOpen(true)} type="button">Import receipts with AI</button>
+            <button className="rounded-full bg-gray-100 px-4 py-3 text-sm text-gray-700" onClick={addDraftItem} type="button">Add manual item</button>
             <button className="rounded-full bg-gray-900 px-4 py-3 text-sm text-white disabled:opacity-50" disabled={loading} onClick={() => void saveOrder()} type="button">Save order · {formatCurrency(receiptMeta.total ?? draftTotal)}</button>
           </div>
 
           {feedback ? <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">{feedback}</p> : null}
+
+          {draftOrders.length > 1 ? (
+            <div className="flex items-center justify-end gap-2 rounded-2xl bg-gray-50 px-3 py-2">
+              <button className="grid h-9 w-9 place-items-center rounded-full bg-white text-lg shadow-sm disabled:opacity-40" disabled={activeDraftOrderIndex <= 0} onClick={() => setActiveDraftOrderIndex((current) => Math.max(0, current - 1))} type="button">←</button>
+              <span className="text-sm font-medium text-gray-700">{activeDraftOrderIndex + 1}/{draftOrders.length}</span>
+              <button className="grid h-9 w-9 place-items-center rounded-full bg-white text-lg shadow-sm disabled:opacity-40" disabled={activeDraftOrderIndex >= draftOrders.length - 1} onClick={() => setActiveDraftOrderIndex((current) => Math.min(draftOrders.length - 1, current + 1))} type="button">→</button>
+            </div>
+          ) : null}
 
           <div className="flex flex-col gap-3">
             {draftItems.map((item) => (
               <DraftItemRow
                 item={item}
                 key={item.localId}
-                onChange={(patch) => updateDraftItem(item.localId, patch)}
-                onRemove={() => setDraftItems((current) => current.filter((entry) => entry.localId !== item.localId))}
+                onChange={(patch) => {
+                  updateDraftItem(item.localId, patch);
+                  if (Object.prototype.hasOwnProperty.call(patch, "product")) {
+                    propagateProductRelink(supermarket, item.receiptName, patch.product ?? null);
+                  }
+                }}
+                onRemove={() => removeDraftItem(item.localId)}
                 supermarket={supermarket}
               />
             ))}
           </div>
         </div>
       </section>
+
+      {importOpen ? (
+        <ReceiptImportModal
+          groups={getImportGroups()}
+          importMode={importMode}
+          loading={loading}
+          onClose={() => setImportOpen(false)}
+          onFiles={loadImportFiles}
+          onGroupChange={updateImportPageGroup}
+          onModeChange={setImportMode}
+          onScan={(groups) => void scanReceiptGroups(groups)}
+          pages={importPages}
+        />
+      ) : null}
 
       {orders.length ? (
         <div className="flex flex-col gap-4">
@@ -428,7 +618,15 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                   {order.items.map((item) => (
-                    <OrderItemCard item={item} key={item.id} language={language} onOrderChange={(nextOrder) => setOrders((current) => current.map((entry) => (entry.id === nextOrder.id ? nextOrder : entry)))} order={order} people={people} />
+                    <OrderItemCard
+                      item={item}
+                      key={item.id}
+                      language={language}
+                      onOrderChange={(nextOrder) => setOrders((current) => current.map((entry) => (entry.id === nextOrder.id ? nextOrder : entry)))}
+                      onProductRelink={(product) => propagateProductRelink(order.supermarket, item.receiptName, product)}
+                      order={order}
+                      people={people}
+                    />
                   ))}
                 </div>
               </section>
@@ -442,6 +640,99 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
         </section>
       )}
     </section>
+  );
+}
+
+function ReceiptImportModal({
+  groups,
+  importMode,
+  loading,
+  onClose,
+  onFiles,
+  onGroupChange,
+  onModeChange,
+  onScan,
+  pages,
+}: {
+  groups: ImportPage[][];
+  importMode: "all" | "individual" | "manual";
+  loading: boolean;
+  onClose: () => void;
+  onFiles: (files: FileList | null) => void;
+  onGroupChange: (pageId: string, group: number) => void;
+  onModeChange: (mode: "all" | "individual" | "manual") => void;
+  onScan: (groups: ImportPage[][]) => void;
+  pages: ImportPage[];
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-start justify-center bg-gray-950/55 px-4 py-8 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="relative flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-gray-100 p-5">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-blue-600">Receipt import</p>
+            <h3 className="mt-1 text-2xl font-bold text-gray-900">Split images and PDF pages into orders</h3>
+            <p className="mt-1 text-sm text-gray-500">Upload multiple images or PDFs. Multipage PDFs are split into page previews so you can choose how to group them.</p>
+          </div>
+          <button className="grid h-10 w-10 place-items-center rounded-full bg-gray-100 text-lg text-gray-700 hover:bg-gray-200" onClick={onClose} type="button" aria-label="Close receipt import">×</button>
+        </div>
+
+        <div className="flex flex-col gap-5 overflow-y-auto p-5">
+          <label className="flex flex-col gap-2 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-700">
+            Add images or PDFs
+            <input accept="image/*,application/pdf" multiple onChange={(event) => onFiles(event.target.files)} type="file" />
+          </label>
+
+          {pages.length ? (
+            <>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <button className={`rounded-2xl border px-4 py-3 text-left ${importMode === "all" ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white"}`} onClick={() => onModeChange("all")} type="button">
+                  <strong className="block text-gray-900">All pages are one order</strong>
+                  <span className="text-sm text-gray-500">Useful when one receipt spans multiple pages/files.</span>
+                </button>
+                <button className={`rounded-2xl border px-4 py-3 text-left ${importMode === "individual" ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white"}`} onClick={() => onModeChange("individual")} type="button">
+                  <strong className="block text-gray-900">Split into individual orders</strong>
+                  <span className="text-sm text-gray-500">Each image/page becomes its own order.</span>
+                </button>
+                <button className={`rounded-2xl border px-4 py-3 text-left ${importMode === "manual" ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white"}`} onClick={() => onModeChange("manual")} type="button">
+                  <strong className="block text-gray-900">Manual groups</strong>
+                  <span className="text-sm text-gray-500">Assign group numbers to combine pages.</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {pages.map((page) => (
+                  <article className="overflow-hidden rounded-2xl border border-gray-100 bg-gray-50" key={page.id}>
+                    <div className="relative h-64 bg-white">
+                      {page.file.type.startsWith("image/") ? (
+                        <Image alt={page.label} className="object-contain" fill sizes="(max-width: 768px) 100vw, 320px" src={page.previewUrl} unoptimized />
+                      ) : (
+                        <iframe className="h-full w-full" src={`${page.previewUrl}#toolbar=0&navpanes=0`} title={page.label} />
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-3 p-3">
+                      <p className="min-w-0 truncate text-sm font-medium text-gray-900">{page.label}</p>
+                      {importMode === "manual" ? (
+                        <label className="flex items-center gap-1 text-xs text-gray-600">
+                          Group
+                          <input className="w-16 rounded-xl border border-gray-200 px-2 py-1" min={1} onChange={(event) => onGroupChange(page.id, Number(event.target.value))} type="number" value={page.group} />
+                        </label>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gray-50 px-4 py-3">
+                <p className="text-sm text-gray-600">This will scan <strong>{groups.length}</strong> order{groups.length === 1 ? "" : "s"} from <strong>{pages.length}</strong> page/file{pages.length === 1 ? "" : "s"}.</p>
+                <button className="rounded-full bg-blue-600 px-5 py-3 text-sm text-white disabled:opacity-50" disabled={loading || !groups.length} onClick={() => onScan(groups)} type="button">
+                  {loading ? "Scanning..." : "Scan grouped orders"}
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -576,7 +867,21 @@ function ProductPicker({ selected, supermarket, onSelect }: { selected: ProductC
   );
 }
 
-function OrderItemCard({ item, order, people, language, onOrderChange }: { item: PastOrderItemData; order: PastOrderData; people: PersonData[]; language: "en" | "es"; onOrderChange: (order: PastOrderData) => void }) {
+function OrderItemCard({
+  item,
+  order,
+  people,
+  language,
+  onOrderChange,
+  onProductRelink,
+}: {
+  item: PastOrderItemData;
+  order: PastOrderData;
+  people: PersonData[];
+  language: "en" | "es";
+  onOrderChange: (order: PastOrderData) => void;
+  onProductRelink: (product: ProductCardData | null) => void;
+}) {
   const initializedRef = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
   const [shares, setShares] = useState(() => {
@@ -620,6 +925,7 @@ function OrderItemCard({ item, order, people, language, onOrderChange }: { item:
       body: JSON.stringify({ productId: product?.id ?? null }),
     });
     const payload = (await response.json()) as { order?: PastOrderData };
+    onProductRelink(product);
     if (payload.order) {
       onOrderChange(payload.order);
     }

@@ -339,8 +339,15 @@ export async function updateOrderItemLink(orderId: string, itemId: string, produ
     await upsertReceiptAlias(order.supermarket, item.receiptName, productId);
   }
 
-  await prisma.pastOrderItem.update({
-    where: { id: itemId },
+  const sameStoreOrders = await prisma.pastOrder.findMany({
+    where: { supermarket: order.supermarket },
+    include: { items: true },
+  });
+  const normalizedCode = normalizeReceiptAlias(item.receiptName);
+  const matchingItemIds = sameStoreOrders.flatMap((entry) => entry.items.filter((orderItem) => normalizeReceiptAlias(orderItem.receiptName) === normalizedCode).map((orderItem) => orderItem.id));
+
+  await prisma.pastOrderItem.updateMany({
+    where: { id: { in: matchingItemIds.length ? matchingItemIds : [itemId] } },
     data: { productId },
   });
 
