@@ -13,6 +13,7 @@ type AiReceiptResponse = {
     quantity?: number | null;
     unitPrice?: number | null;
     totalPrice?: number | null;
+    dealText?: string | null;
   }>;
 };
 
@@ -47,7 +48,7 @@ async function callReceiptAi(receiptFiles: File[], supermarket: Supermarket) {
         {
           role: "system",
           content:
-            "You read Dutch grocery receipts. Return strict JSON only with supermarket, orderedAt, total, rawReceiptText, notes, and items. items must include receiptName, quantity, unitPrice, totalPrice. Keep receiptName exactly as printed/codenamed. Use null when unsure. Do not invent items.",
+            "You read Dutch grocery receipts. Return strict JSON only with supermarket, orderedAt, total, rawReceiptText, notes, and items. items must include receiptName, quantity, unitPrice, totalPrice, and optional dealText when a visible deal/discount applies. Keep receiptName exactly as printed/codenamed. Use null when unsure. Do not invent items.",
         },
         {
           role: "user",
@@ -112,6 +113,7 @@ export async function POST(request: Request) {
         quantity: typeof item.quantity === "number" && item.quantity > 0 ? item.quantity : 1,
         unitPrice: typeof item.unitPrice === "number" ? item.unitPrice : null,
         totalPrice: typeof item.totalPrice === "number" ? item.totalPrice : 0,
+        dealText: item.dealText?.trim() || null,
       }))
       .filter((item) => item.receiptName && item.totalPrice >= 0);
     const matchedItems = await matchReceiptItems(selectedStore as Supermarket, items);

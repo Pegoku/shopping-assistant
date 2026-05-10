@@ -146,6 +146,7 @@ export function mapPastOrder(order: NonNullable<OrderWithRelations>): PastOrderD
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       totalPrice: item.totalPrice,
+      dealText: item.dealText,
       aiConfidence: item.aiConfidence,
       product: item.product ? mapProductCard(item.product) : null,
       shares: item.shares.map((share) => ({
@@ -242,13 +243,14 @@ async function findProductForReceiptName(supermarket: Supermarket, receiptName: 
   return best && best.score > 0 ? { product: best.product, confidence: Math.min(0.95, Math.max(0.35, best.score)) } : { product: null, confidence: null };
 }
 
-export async function matchReceiptItems(supermarket: Supermarket, items: Array<{ receiptName: string; quantity: number; unitPrice: number | null; totalPrice: number }>): Promise<ReceiptScanItem[]> {
+export async function matchReceiptItems(supermarket: Supermarket, items: Array<{ receiptName: string; quantity: number; unitPrice: number | null; totalPrice: number; dealText?: string | null }>): Promise<ReceiptScanItem[]> {
   return Promise.all(
     items.map(async (item) => {
       const match = await findProductForReceiptName(supermarket, item.receiptName, item.totalPrice);
 
       return {
         ...item,
+        dealText: item.dealText ?? null,
         product: match.product ? mapProductCard(match.product) : null,
         aiConfidence: match.confidence,
       };
@@ -289,6 +291,7 @@ export async function createPastOrder(input: {
     quantity: number;
     unitPrice?: number | null;
     totalPrice: number;
+    dealText?: string | null;
     productId?: string | null;
     aiConfidence?: number | null;
   }>;
@@ -310,6 +313,7 @@ export async function createPastOrder(input: {
           quantity: item.quantity > 0 ? item.quantity : 1,
           unitPrice: item.unitPrice ?? null,
           totalPrice: item.totalPrice,
+          dealText: item.dealText ?? null,
           productId: item.productId || null,
           aiConfidence: item.aiConfidence ?? null,
           sortOrder: index,

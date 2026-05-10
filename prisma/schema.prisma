@@ -104,6 +104,7 @@ model PastOrderItem {
   quantity       Float       @default(1)
   unitPrice      Float?
   totalPrice     Float
+  dealText       String?
   aiConfidence   Float?
   sortOrder      Int         @default(0)
   createdAt      DateTime    @default(now())

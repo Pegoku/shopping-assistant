@@ -100,6 +100,7 @@ export type PastOrderItemData = {
   quantity: number;
   unitPrice: number | null;
   totalPrice: number;
+  dealText: string | null;
   aiConfidence: number | null;
   product: ProductCardData | null;
   shares: PastOrderShareData[];
@@ -132,6 +133,7 @@ export type ReceiptScanItem = {
   quantity: number;
   unitPrice: number | null;
   totalPrice: number;
+  dealText: string | null;
   product: ProductCardData | null;
   aiConfidence: number | null;
 };

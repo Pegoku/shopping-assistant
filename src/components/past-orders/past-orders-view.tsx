@@ -18,6 +18,7 @@ type DraftItem = {
   quantity: number;
   unitPrice: number | null;
   totalPrice: number;
+  dealText: string | null;
   aiConfidence: number | null;
   product: ProductCardData | null;
 };
@@ -53,6 +54,7 @@ function newDraftItem(): DraftItem {
     quantity: 1,
     unitPrice: null,
     totalPrice: 0,
+    dealText: null,
     aiConfidence: null,
     product: null,
   };
@@ -243,6 +245,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             totalPrice: item.totalPrice,
+            dealText: item.dealText,
             productId: item.product?.id ?? null,
             aiConfidence: item.aiConfidence,
           })),
@@ -742,13 +745,82 @@ function ReceiptImportModal({
 
 function DraftItemRow({ item, onChange, onRemove, supermarket }: { item: DraftItem; onChange: (patch: Partial<DraftItem>) => void; onRemove: () => void; supermarket: "AH" | "JUMBO" }) {
   return (
-    <article className="grid grid-cols-1 lg:grid-cols-[1fr_120px_140px_1.4fr_auto] gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3">
+    <article className="grid grid-cols-1 lg:grid-cols-[1fr_110px_120px_1.1fr_1.4fr_auto] gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3">
       <input onChange={(event) => onChange({ receiptName: event.target.value })} placeholder="Receipt name / codename" value={item.receiptName} />
       <input min={0.01} onChange={(event) => onChange({ quantity: Number(event.target.value) })} step="0.01" type="number" value={item.quantity} />
       <input min={0} onChange={(event) => onChange({ totalPrice: Number(event.target.value) })} step="0.01" type="number" value={item.totalPrice} />
+      <DealPicker dealText={item.dealText} onChange={(dealText) => onChange({ dealText })} />
       <ProductPicker onSelect={(product) => onChange({ product })} priceHint={item.totalPrice} selected={item.product} supermarket={supermarket} />
       <button className="rounded-full bg-white px-3 py-2 text-sm text-gray-600" onClick={onRemove} type="button">Remove</button>
     </article>
+  );
+}
+
+function DealPicker({ dealText, onChange }: { dealText: string | null; onChange: (dealText: string | null) => void }) {
+  const [kind, setKind] = useState<"none" | "bogo" | "percent" | "amount" | "custom">(dealText ? "custom" : "none");
+  const [value, setValue] = useState("");
+  const [custom, setCustom] = useState(dealText ?? "");
+
+  function apply(nextKind: typeof kind, nextValue = value, nextCustom = custom) {
+    setKind(nextKind);
+
+    if (nextKind === "none") {
+      onChange(null);
+      return;
+    }
+
+    if (nextKind === "bogo") {
+      onChange("1+1 free");
+      return;
+    }
+
+    if (nextKind === "percent") {
+      onChange(nextValue ? `${nextValue}% off` : null);
+      return;
+    }
+
+    if (nextKind === "amount") {
+      onChange(nextValue ? `€${nextValue} off` : null);
+      return;
+    }
+
+    onChange(nextCustom.trim() || null);
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <select onChange={(event) => apply(event.target.value as typeof kind)} value={kind}>
+        <option value="none">No deal</option>
+        <option value="bogo">1+1 free</option>
+        <option value="percent">% off</option>
+        <option value="amount">€ off</option>
+        <option value="custom">Custom</option>
+      </select>
+      {kind === "percent" || kind === "amount" ? (
+        <input
+          min={0}
+          onChange={(event) => {
+            setValue(event.target.value);
+            apply(kind, event.target.value);
+          }}
+          placeholder={kind === "percent" ? "Discount %" : "Discount €"}
+          step="0.01"
+          type="number"
+          value={value}
+        />
+      ) : null}
+      {kind === "custom" ? (
+        <input
+          onChange={(event) => {
+            setCustom(event.target.value);
+            apply("custom", value, event.target.value);
+          }}
+          placeholder="Custom deal"
+          value={custom}
+        />
+      ) : null}
+      {dealText ? <span className="rounded-full bg-orange-50 px-3 py-1 text-xs text-orange-700">{dealText}</span> : null}
+    </div>
   );
 }
 
@@ -982,6 +1054,7 @@ function OrderItemCard({
           <p className="text-[10px] uppercase tracking-wide text-gray-500">Receipt: {item.receiptName}</p>
           <h3 className="mt-1 text-base font-semibold text-gray-900">{item.product ? item.product.originalName : "Unlinked product"}</h3>
           <p className="text-sm text-gray-500">Qty {item.quantity} · {formatCurrency(item.totalPrice)}{item.aiConfidence ? ` · confidence ${Math.round(item.aiConfidence * 100)}%` : ""}</p>
+          {item.dealText ? <p className="mt-1 inline-flex rounded-full bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700">{item.dealText}</p> : null}
           {item.product ? <p className="text-sm text-gray-500 capitalize">{language === "es" ? item.product.genericNameEs : item.product.genericNameEn}</p> : null}
         </div>
 

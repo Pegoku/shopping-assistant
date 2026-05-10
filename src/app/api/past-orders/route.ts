@@ -16,6 +16,7 @@ type OrderBody = {
     quantity?: number;
     unitPrice?: number | null;
     totalPrice?: number;
+    dealText?: string | null;
     productId?: string | null;
     aiConfidence?: number | null;
   }>;
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
       quantity: typeof item.quantity === "number" && item.quantity > 0 ? item.quantity : 1,
       unitPrice: typeof item.unitPrice === "number" ? item.unitPrice : null,
       totalPrice: typeof item.totalPrice === "number" ? item.totalPrice : 0,
+      dealText: item.dealText?.trim() || null,
       productId: item.productId ?? null,
       aiConfidence: typeof item.aiConfidence === "number" ? item.aiConfidence : null,
     }))
