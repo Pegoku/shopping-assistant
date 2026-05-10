@@ -1,19 +1,21 @@
-import { PastOrderSource, Supermarket } from "@prisma/client";
+import { Supermarket } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { createPastOrder, listPastOrders } from "@/lib/past-orders";
+import { updatePastOrder } from "@/lib/past-orders";
+
+type Params = {
+  params: Promise<{ id: string }>;
+};
 
 type OrderBody = {
   supermarket?: "AH" | "JUMBO";
-  source?: "MANUAL" | "AI_RECEIPT" | "WHATSAPP";
   orderedAt?: string | null;
   payerId?: string | null;
-  participantIds?: string[];
   total?: number | null;
   rawReceiptText?: string | null;
   receiptImageName?: string | null;
   items?: Array<{
-    receiptName?: string;
     id?: string | null;
+    receiptName?: string;
     quantity?: number;
     unitPrice?: number | null;
     totalPrice?: number;
@@ -23,11 +25,8 @@ type OrderBody = {
   }>;
 };
 
-export async function GET() {
-  return NextResponse.json({ orders: await listPastOrders() });
-}
-
-export async function POST(request: Request) {
+export async function PATCH(request: Request, { params }: Params) {
+  const { id } = await params;
   const body = ((await request.json().catch(() => ({}))) as OrderBody) ?? {};
 
   if (!body.supermarket || !Object.values(Supermarket).includes(body.supermarket as Supermarket)) {
@@ -36,8 +35,8 @@ export async function POST(request: Request) {
 
   const items = (body.items ?? [])
     .map((item) => ({
-      receiptName: item.receiptName?.trim() ?? "",
       id: item.id ?? null,
+      receiptName: item.receiptName?.trim() ?? "",
       quantity: typeof item.quantity === "number" && item.quantity > 0 ? item.quantity : 1,
       unitPrice: typeof item.unitPrice === "number" ? item.unitPrice : null,
       totalPrice: typeof item.totalPrice === "number" ? item.totalPrice : 0,
@@ -51,17 +50,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Add at least one order item" }, { status: 400 });
   }
 
-  const order = await createPastOrder({
-    supermarket: body.supermarket as Supermarket,
-    source: body.source ? (body.source as PastOrderSource) : PastOrderSource.MANUAL,
-    orderedAt: body.orderedAt,
-    payerId: body.payerId,
-    participantIds: body.participantIds,
-    total: body.total,
-    rawReceiptText: body.rawReceiptText,
-    receiptImageName: body.receiptImageName,
-    items,
-  });
+  try {
+    const order = await updatePastOrder({
+      id,
+      supermarket: body.supermarket as Supermarket,
+      orderedAt: body.orderedAt,
+      payerId: body.payerId,
+      total: body.total,
+      rawReceiptText: body.rawReceiptText,
+      receiptImageName: body.receiptImageName,
+      items,
+    });
 
-  return NextResponse.json({ order });
+    return NextResponse.json({ order });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to update order" }, { status: 400 });
+  }
 }

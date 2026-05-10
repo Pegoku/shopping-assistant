@@ -355,6 +355,99 @@ export async function createPastOrder(input: {
   return getPastOrder(order.id);
 }
 
+export async function updatePastOrder(input: {
+  id: string;
+  supermarket: Supermarket;
+  orderedAt?: string | null;
+  payerId?: string | null;
+  total?: number | null;
+  rawReceiptText?: string | null;
+  receiptImageName?: string | null;
+  items: Array<{
+    id?: string | null;
+    receiptName: string;
+    quantity: number;
+    unitPrice?: number | null;
+    totalPrice: number;
+    dealText?: string | null;
+    productId?: string | null;
+    aiConfidence?: number | null;
+  }>;
+}) {
+  const existing = await prisma.pastOrder.findUnique({
+    where: { id: input.id },
+    include: { items: true },
+  });
+
+  if (!existing) {
+    throw new Error("Order not found");
+  }
+
+  const total = input.total ?? input.items.reduce((sum, item) => sum + item.totalPrice, 0);
+  const keptItemIds = input.items.map((item) => item.id).filter((id): id is string => Boolean(id));
+
+  await prisma.$transaction(async (tx) => {
+    await tx.pastOrder.update({
+      where: { id: input.id },
+      data: {
+        supermarket: input.supermarket,
+        orderedAt: input.orderedAt ? new Date(input.orderedAt) : existing.orderedAt,
+        payerId: input.payerId || null,
+        total,
+        rawReceiptText: input.rawReceiptText,
+        receiptImageName: input.receiptImageName,
+      },
+    });
+
+    await tx.pastOrderItem.deleteMany({
+      where: {
+        orderId: input.id,
+        id: { notIn: keptItemIds },
+      },
+    });
+
+    for (const [index, item] of input.items.entries()) {
+      if (item.id) {
+        await tx.pastOrderItem.update({
+          where: { id: item.id },
+          data: {
+            receiptName: item.receiptName.trim(),
+            quantity: item.quantity > 0 ? item.quantity : 1,
+            unitPrice: item.unitPrice ?? null,
+            totalPrice: item.totalPrice,
+            dealText: item.dealText ?? null,
+            productId: item.productId || null,
+            aiConfidence: item.aiConfidence ?? null,
+            sortOrder: index,
+          },
+        });
+      } else {
+        await tx.pastOrderItem.create({
+          data: {
+            orderId: input.id,
+            receiptName: item.receiptName.trim(),
+            quantity: item.quantity > 0 ? item.quantity : 1,
+            unitPrice: item.unitPrice ?? null,
+            totalPrice: item.totalPrice,
+            dealText: item.dealText ?? null,
+            productId: item.productId || null,
+            aiConfidence: item.aiConfidence ?? null,
+            sortOrder: index,
+          },
+        });
+      }
+    }
+  });
+
+  for (const item of input.items) {
+    if (item.productId) {
+      await upsertReceiptAlias(input.supermarket, item.receiptName, item.productId);
+    }
+  }
+
+  return getPastOrder(input.id);
+}
+
 export async function updateOrderItemLink(orderId: string, itemId: string, productId: string | null) {
   const order = await prisma.pastOrder.findUnique({ where: { id: orderId } });
   const item = await prisma.pastOrderItem.findUnique({ where: { id: itemId } });

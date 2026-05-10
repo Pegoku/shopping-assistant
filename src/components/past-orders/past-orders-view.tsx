@@ -14,6 +14,7 @@ import { formatCurrency } from "@/lib/utils";
 
 type DraftItem = {
   localId: string;
+  existingItemId: string | null;
   receiptName: string;
   quantity: number;
   unitPrice: number | null;
@@ -59,6 +60,7 @@ type PastOrdersViewProps = {
 function newDraftItem(): DraftItem {
   return {
     localId: crypto.randomUUID(),
+    existingItemId: null,
     receiptName: "",
     quantity: 1,
     unitPrice: null,
@@ -194,6 +196,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
   const [importOpen, setImportOpen] = useState(false);
   const [importPages, setImportPages] = useState<ImportPage[]>([]);
   const [importMode, setImportMode] = useState<"all" | "individual" | "manual">("all");
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -254,7 +257,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
         return {
           localId: crypto.randomUUID(),
           orderedAt: payload.result.orderedAt ? new Date(payload.result.orderedAt).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
-          items: payload.result.items.map((item) => ({ ...item, localId: crypto.randomUUID() })),
+          items: payload.result.items.map((item) => ({ ...item, localId: crypto.randomUUID(), existingItemId: null })),
           meta: {
             rawReceiptText: payload.result.rawReceiptText,
             receiptImageName: payload.result.receiptImageName ?? group.map((page) => page.label).join(", "),
@@ -287,8 +290,8 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
     setFeedback(null);
 
     try {
-      const response = await fetch("/api/past-orders", {
-        method: "POST",
+      const response = await fetch(editingOrderId ? `/api/past-orders/${editingOrderId}` : "/api/past-orders", {
+        method: editingOrderId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           supermarket,
@@ -300,6 +303,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
           rawReceiptText: receiptMeta.rawReceiptText,
           receiptImageName: receiptMeta.receiptImageName,
           items: items.map((item) => ({
+            id: item.existingItemId,
             receiptName: item.receiptName,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
@@ -316,13 +320,14 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
         throw new Error(payload.error ?? "Failed to save order");
       }
 
-      setOrders((current) => [payload.order!, ...current]);
+      setOrders((current) => editingOrderId ? current.map((order) => (order.id === payload.order!.id ? payload.order! : order)) : [payload.order!, ...current]);
       setDraftOrders((current) => {
         const next = current.filter((_, index) => index !== activeDraftOrderIndex);
         return next.length ? next : [newDraftOrder()];
       });
       setActiveDraftOrderIndex((current) => Math.max(0, Math.min(current, draftOrders.length - 2)));
-      setFeedback(draftOrders.length > 1 ? "Order saved. Continue with the next scanned order." : "Order saved.");
+      setEditingOrderId(null);
+      setFeedback(editingOrderId ? "Order updated." : draftOrders.length > 1 ? "Order saved. Continue with the next scanned order." : "Order saved.");
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Failed to save order");
     } finally {
@@ -344,6 +349,43 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
 
   function updateActiveDraftOrderedAt(value: string) {
     setDraftOrders((current) => current.map((order, index) => (index === activeDraftOrderIndex ? { ...order, orderedAt: value } : order)));
+  }
+
+  function editOrder(order: PastOrderData) {
+    setEditingOrderId(order.id);
+    setSupermarket(order.supermarket);
+    setPayerId(order.payer?.id ?? "");
+    setDraftOrders([
+      {
+        localId: crypto.randomUUID(),
+        orderedAt: new Date(order.orderedAt).toISOString().slice(0, 16),
+        items: order.items.map((item) => ({
+          localId: crypto.randomUUID(),
+          existingItemId: item.id,
+          receiptName: item.receiptName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+          dealText: item.dealText,
+          aiConfidence: item.aiConfidence,
+          product: item.product,
+        })),
+        meta: {
+          rawReceiptText: order.rawReceiptText,
+          receiptImageName: order.receiptImageName,
+          total: null,
+        },
+      },
+    ]);
+    setActiveDraftOrderIndex(0);
+    setFeedback("Editing order. Save to apply changes or cancel editing.");
+  }
+
+  function cancelEditOrder() {
+    setEditingOrderId(null);
+    setDraftOrders([newDraftOrder()]);
+    setActiveDraftOrderIndex(0);
+    setFeedback(null);
   }
 
   async function loadImportFiles(files: FileList | null) {
@@ -602,7 +644,8 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
           <div className="flex flex-wrap gap-2">
             <button className="rounded-full bg-blue-600 px-4 py-3 text-sm text-white disabled:opacity-50" disabled={loading} onClick={() => setImportOpen(true)} type="button">Import receipts with AI</button>
             <button className="rounded-full bg-gray-100 px-4 py-3 text-sm text-gray-700" onClick={addDraftItem} type="button">Add manual item</button>
-            <button className="rounded-full bg-gray-900 px-4 py-3 text-sm text-white disabled:opacity-50" disabled={loading} onClick={() => void saveOrder()} type="button">Save order · {formatCurrency(receiptMeta.total ?? draftTotal)}</button>
+            <button className="rounded-full bg-gray-900 px-4 py-3 text-sm text-white disabled:opacity-50" disabled={loading} onClick={() => void saveOrder()} type="button">{editingOrderId ? "Update order" : "Save order"} · {formatCurrency(receiptMeta.total ?? draftTotal)}</button>
+            {editingOrderId ? <button className="rounded-full bg-red-50 px-4 py-3 text-sm text-red-700" onClick={cancelEditOrder} type="button">Cancel edit</button> : null}
           </div>
 
           {feedback ? <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">{feedback}</p> : null}
@@ -664,6 +707,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
                     <p className="mt-1 text-sm text-gray-500">Paid by {order.payer?.name ?? "nobody yet"}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <button className="rounded-full bg-gray-900 px-4 py-3 text-sm text-white" onClick={() => editOrder(order)} type="button">Edit order</button>
                     <button className="rounded-full bg-blue-600 px-4 py-3 text-sm text-white disabled:opacity-50" disabled={!notInCart.length} onClick={() => addItems(notInCart)} type="button">Add linked items to cart</button>
                     <button className="rounded-full bg-rose-50 px-4 py-3 text-sm text-rose-700 disabled:opacity-50" disabled={!notInFavourites.length} onClick={() => addFavouriteItems(notInFavourites)} type="button">Add to favourites</button>
                   </div>
@@ -688,6 +732,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
                       item={item}
                       key={item.id}
                       language={language}
+                      onEditItem={() => editOrder(order)}
                       onOrderChange={(nextOrder) => setOrders((current) => current.map((entry) => (entry.id === nextOrder.id ? nextOrder : entry)))}
                       onProductRelink={(product) => propagateProductRelink(order.supermarket, item.receiptName, product)}
                       order={order}
@@ -1097,6 +1142,7 @@ function OrderItemCard({
   order,
   people,
   language,
+  onEditItem,
   onOrderChange,
   onProductRelink,
 }: {
@@ -1104,6 +1150,7 @@ function OrderItemCard({
   order: PastOrderData;
   people: PersonData[];
   language: "en" | "es";
+  onEditItem: () => void;
   onOrderChange: (order: PastOrderData) => void;
   onProductRelink: (product: ProductCardData | null) => void;
 }) {
@@ -1204,7 +1251,10 @@ function OrderItemCard({
           {item.product ? <p className="text-sm text-gray-500 capitalize">{language === "es" ? item.product.genericNameEs : item.product.genericNameEn}</p> : null}
         </div>
 
-        {item.product ? <div className="flex flex-wrap gap-2"><AddToCartButton item={productToCartItem(item.product, item.quantity)} /><FavouriteButton className="h-11 w-11" item={toFavouriteItem(item.product)} /></div> : null}
+        <div className="flex flex-wrap gap-2">
+          <button className="rounded-full bg-gray-100 px-4 py-2 text-sm text-gray-700" onClick={onEditItem} type="button">Edit item</button>
+          {item.product ? <><AddToCartButton item={productToCartItem(item.product, item.quantity)} /><FavouriteButton className="h-11 w-11" item={toFavouriteItem(item.product)} /></> : null}
+        </div>
 
         <ProductPicker onSelect={linkProduct} priceHint={item.totalPrice} selected={item.product} supermarket={order.supermarket} />
 
