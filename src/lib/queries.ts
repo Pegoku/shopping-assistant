@@ -219,6 +219,34 @@ function scoreFuzzyProductSearch(product: ProductCardData, search: string) {
   return score;
 }
 
+function buildFastSearchWhere(search: string) {
+  const tokens = tokenize(search).filter((token) => token.length >= 2);
+  const usefulTokens = tokens.filter((token) => !["jumbo", "jambo", "ah", "albert", "heijn"].includes(token));
+  const terms = Array.from(new Set([search, ...usefulTokens])).slice(0, 8);
+
+  if (!terms.length) {
+    return {};
+  }
+
+  return {
+    OR: terms.flatMap((term) => [
+      { originalName: { contains: term } },
+      { genericNameEn: { contains: term } },
+      { genericNameEs: { contains: term } },
+      { quantityText: { contains: term } },
+      {
+        categories: {
+          some: {
+            category: {
+              label: { contains: term },
+            },
+          },
+        },
+      },
+    ]),
+  };
+}
+
 function hasWholeTokenMatch(text: string, candidate: string) {
   const tokens = tokenize(text);
   const candidateTokens = tokenize(candidate);
@@ -304,6 +332,7 @@ export async function getProducts(input: ProductQueryInput = {}): Promise<Produc
   const where = {
     ...(input.supermarket && input.supermarket !== "all" ? { supermarket: input.supermarket } : {}),
     ...(input.dealsOnly ? { isDealActive: true } : {}),
+    ...(search ? buildFastSearchWhere(search) : {}),
   };
 
   try {
@@ -324,6 +353,7 @@ export async function getProducts(input: ProductQueryInput = {}): Promise<Produc
           },
         },
         orderBy: getOrderBy(sort),
+        take: Math.max(250, limit * 4),
       });
       total = products.length;
     } else {
