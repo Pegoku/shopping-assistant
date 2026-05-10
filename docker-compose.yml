@@ -34,6 +34,7 @@ services:
       BLOCK_MALICIOUS: off
       HTTPPROXY: on
       HTTPPROXY_LISTENING_ADDRESS: :8888
+      HTTPPROXY_READ_TIMEOUT: 30s
     restart: unless-stopped
 
 volumes:
