@@ -207,15 +207,7 @@ function resetReadyPromise() {
   });
 }
 
-async function ensureWebJsClient() {
-  if (webJsStore.clientPromise) {
-    logWhatsApp("reusing existing WhatsApp Web client promise", {
-      state: webJsStore.state.state,
-    });
-    await webJsStore.clientPromise;
-    return;
-  }
-
+async function initializeWebJsClient() {
   const { Client, LocalAuth } = await import("whatsapp-web.js");
   const config = getWebJsConfig();
 
@@ -286,8 +278,13 @@ async function ensureWebJsClient() {
     };
   });
 
-  webJsStore.clientPromise = client.initialize().catch((error) => {
+  await client.initialize().catch(async (error) => {
     logWhatsAppError("failed to initialize WhatsApp Web client", error);
+
+    await client.destroy().catch((destroyError) => {
+      logWhatsAppError("failed to destroy WhatsApp Web client after initialization error", destroyError);
+    });
+
     webJsStore.client = null;
     webJsStore.clientPromise = null;
     webJsStore.state = {
@@ -297,7 +294,18 @@ async function ensureWebJsClient() {
     };
     throw error;
   });
+}
 
+async function ensureWebJsClient() {
+  if (webJsStore.clientPromise) {
+    logWhatsApp("reusing existing WhatsApp Web client promise", {
+      state: webJsStore.state.state,
+    });
+    await webJsStore.clientPromise;
+    return;
+  }
+
+  webJsStore.clientPromise = initializeWebJsClient();
   await webJsStore.clientPromise;
 }
 
