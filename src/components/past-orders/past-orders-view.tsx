@@ -93,7 +93,13 @@ function buildPeopleSummary(people: PersonData[], orders: PastOrderData[]) {
       (orderSum, order) =>
         orderSum +
         order.items.reduce(
-          (itemSum, item) => itemSum + item.shares.filter((share) => share.personId === person.id).reduce((shareSum, share) => shareSum + item.totalPrice * (share.percent / 100), 0),
+          (itemSum, item) => {
+            if (!item.shares.length && people.length) {
+              return itemSum + item.totalPrice / people.length;
+            }
+
+            return itemSum + item.shares.filter((share) => share.personId === person.id).reduce((shareSum, share) => shareSum + item.totalPrice * (share.percent / 100), 0);
+          },
           0,
         ),
       0,
@@ -968,6 +974,7 @@ function OrderItemCard({
     const shareMap = new Map(item.shares.map((share) => [share.personId, share.percent]));
     return people.map((person) => ({ personId: person.id, percent: shareMap.get(person.id) ?? 0 }));
   });
+  const selectedShareCount = shares.filter((share) => share.percent > 0).length;
   const shareTotal = shares.reduce((sum, share) => sum + share.percent, 0);
 
   function splitEvenly(personIds: string[]) {
@@ -1065,7 +1072,7 @@ function OrderItemCard({
         <div className="rounded-2xl bg-gray-50 p-3">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Split this line</p>
-            <span className={`rounded-full px-3 py-1 text-xs font-medium ${shareTotal > 100 ? "bg-red-100 text-red-700" : "bg-white text-gray-600"}`}>{Math.round(shareTotal * 10) / 10}% assigned</span>
+            <span className={`rounded-full px-3 py-1 text-xs font-medium ${shareTotal > 100 ? "bg-red-100 text-red-700" : "bg-white text-gray-600"}`}>{selectedShareCount ? `${Math.round(shareTotal * 10) / 10}% assigned` : "Even split"}</span>
           </div>
           <div className="mb-3 flex flex-wrap gap-2">
             {people.map((person) => {

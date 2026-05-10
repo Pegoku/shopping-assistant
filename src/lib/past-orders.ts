@@ -61,7 +61,28 @@ async function getOrderRecord(id: string) {
   });
 }
 
-function calculateSettlement(order: NonNullable<OrderWithRelations>): SettlementRow[] {
+type SettlementPerson = { id: string; name: string };
+
+function getEffectiveShares(
+  item: NonNullable<OrderWithRelations>["items"][number],
+  fallbackPeople: SettlementPerson[],
+) {
+  if (item.shares.length || !fallbackPeople.length) {
+    return item.shares.map((share) => ({
+      personId: share.personId,
+      personName: share.person.name,
+      percent: share.percent,
+    }));
+  }
+
+  return fallbackPeople.map((person) => ({
+    personId: person.id,
+    personName: person.name,
+    percent: 100 / fallbackPeople.length,
+  }));
+}
+
+function calculateSettlement(order: NonNullable<OrderWithRelations>, fallbackPeople: SettlementPerson[]): SettlementRow[] {
   if (!order.payer) {
     return [];
   }
@@ -71,9 +92,9 @@ function calculateSettlement(order: NonNullable<OrderWithRelations>): Settlement
   let assignedTotal = 0;
 
   for (const item of order.items) {
-    for (const share of item.shares) {
+    for (const share of getEffectiveShares(item, fallbackPeople)) {
       const amount = item.totalPrice * (share.percent / 100);
-      names.set(share.personId, share.person.name);
+      names.set(share.personId, share.personName);
       balances.set(share.personId, (balances.get(share.personId) ?? 0) - amount);
       assignedTotal += amount;
     }
@@ -129,7 +150,7 @@ function calculateSettlement(order: NonNullable<OrderWithRelations>): Settlement
   return rows;
 }
 
-export function mapPastOrder(order: NonNullable<OrderWithRelations>): PastOrderData {
+export function mapPastOrder(order: NonNullable<OrderWithRelations>, fallbackPeople: SettlementPerson[] = []): PastOrderData {
   return {
     id: order.id,
     supermarket: order.supermarket,
@@ -139,7 +160,7 @@ export function mapPastOrder(order: NonNullable<OrderWithRelations>): PastOrderD
     rawReceiptText: order.rawReceiptText,
     receiptImageName: order.receiptImageName,
     payer: order.payer ? { id: order.payer.id, name: order.payer.name } : null,
-    settlement: calculateSettlement(order),
+    settlement: calculateSettlement(order, fallbackPeople),
     items: order.items.map((item) => ({
       id: item.id,
       receiptName: item.receiptName,
@@ -178,16 +199,19 @@ export async function upsertPerson(name: string) {
 }
 
 export async function listPastOrders() {
-  const orders = await prisma.pastOrder.findMany({
-    orderBy: { orderedAt: "desc" },
-    include: orderInclude(),
-  });
-  return orders.map(mapPastOrder);
+  const [orders, people] = await Promise.all([
+    prisma.pastOrder.findMany({
+      orderBy: { orderedAt: "desc" },
+      include: orderInclude(),
+    }),
+    listPeople(),
+  ]);
+  return orders.map((order) => mapPastOrder(order, people));
 }
 
 export async function getPastOrder(id: string) {
-  const order = await getOrderRecord(id);
-  return order ? mapPastOrder(order) : null;
+  const [order, people] = await Promise.all([getOrderRecord(id), listPeople()]);
+  return order ? mapPastOrder(order, people) : null;
 }
 
 async function findProductForReceiptName(supermarket: Supermarket, receiptName: string, totalPrice?: number | null) {
