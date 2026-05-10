@@ -8,6 +8,7 @@ type AiReceiptResponse = {
   total?: number | null;
   rawReceiptText?: string | null;
   notes?: string | null;
+  expectedItemCount?: number | null;
   items?: Array<{
     receiptName?: string | null;
     quantity?: number | null;
@@ -42,13 +43,13 @@ async function callReceiptAi(receiptFiles: File[], supermarket: Supermarket) {
     body: JSON.stringify({
       model,
       temperature: 0,
-      max_tokens: 1800,
+      max_tokens: Number(process.env.HACKCLUB_AI_RECEIPT_MAX_TOKENS ?? 5000),
       response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
           content:
-            "You read Dutch grocery receipts. Return strict JSON only with supermarket, orderedAt, total, rawReceiptText, notes, and items. items must include receiptName, quantity, unitPrice, totalPrice, and optional dealText when a visible deal/discount applies. Keep receiptName exactly as printed/codenamed. Use null when unsure. Do not invent items.",
+            "You read Dutch grocery receipts. Return strict JSON only with supermarket, orderedAt, total, rawReceiptText, expectedItemCount, notes, and items. Extract EVERY visible product line item, including all continued pages/files. Do not stop at 20 items. Do not summarize repeated products unless the receipt itself combines them into one line. items must include receiptName, quantity, unitPrice, totalPrice, and optional dealText when a visible deal/discount applies. Keep receiptName exactly as printed/codenamed. Use null when unsure. Do not invent items. Set expectedItemCount to the number of product lines you can see, and ensure items.length matches it whenever possible.",
         },
         {
           role: "user",
@@ -126,7 +127,10 @@ export async function POST(request: Request) {
         rawReceiptText: parsed.rawReceiptText ?? null,
         receiptImageName: receiptFiles.map((file) => file.name).join(", "),
         items: matchedItems,
-        notes: parsed.notes ?? null,
+        notes:
+          parsed.expectedItemCount && parsed.expectedItemCount > matchedItems.length
+            ? `${parsed.notes ?? ""} Expected ${parsed.expectedItemCount} visible item lines, extracted ${matchedItems.length}. Review receipt manually.`.trim()
+            : parsed.notes ?? null,
       },
     });
   } catch (error) {
