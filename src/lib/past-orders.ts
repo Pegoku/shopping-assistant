@@ -31,6 +31,7 @@ function productInclude() {
       },
       take: 8,
     },
+    settlementPayments: true,
   };
 }
 
@@ -102,12 +103,15 @@ function calculateSettlement(order: NonNullable<OrderWithRelations>): Settlement
     const amount = cents(Math.min(-debtor.balance, creditor.balance));
 
     if (amount > 0) {
+      const payment = order.settlementPayments.find((entry) => entry.fromPersonId === debtor.personId && entry.toPersonId === creditor.personId);
+
       rows.push({
         fromPersonId: debtor.personId,
         fromName: names.get(debtor.personId) ?? "Unknown",
         toPersonId: creditor.personId,
         toName: names.get(creditor.personId) ?? "Unknown",
         amount,
+        paidAt: payment?.paidAt.toISOString() ?? null,
       });
     }
 
@@ -289,7 +293,6 @@ export async function createPastOrder(input: {
     aiConfidence?: number | null;
   }>;
 }) {
-  const participantIds = Array.from(new Set((input.participantIds ?? []).filter(Boolean)));
   const total = input.total ?? input.items.reduce((sum, item) => sum + item.totalPrice, 0);
 
   const order = await prisma.pastOrder.create({
@@ -310,14 +313,6 @@ export async function createPastOrder(input: {
           productId: item.productId || null,
           aiConfidence: item.aiConfidence ?? null,
           sortOrder: index,
-          shares: participantIds.length
-            ? {
-                create: participantIds.map((personId) => ({
-                  personId,
-                  percent: 100 / participantIds.length,
-                })),
-              }
-            : undefined,
         })),
       },
     },
@@ -372,6 +367,34 @@ export async function updateOrderItemShares(orderId: string, itemId: string, sha
       });
     }
   });
+
+  return getPastOrder(orderId);
+}
+
+export async function setSettlementPaid(orderId: string, fromPersonId: string, toPersonId: string, paid: boolean) {
+  const order = await prisma.pastOrder.findUnique({ where: { id: orderId } });
+
+  if (!order) {
+    throw new Error("Order not found");
+  }
+
+  if (paid) {
+    await prisma.pastOrderSettlementPayment.upsert({
+      where: {
+        orderId_fromPersonId_toPersonId: {
+          orderId,
+          fromPersonId,
+          toPersonId,
+        },
+      },
+      update: { paidAt: new Date() },
+      create: { orderId, fromPersonId, toPersonId },
+    });
+  } else {
+    await prisma.pastOrderSettlementPayment.deleteMany({
+      where: { orderId, fromPersonId, toPersonId },
+    });
+  }
 
   return getPastOrder(orderId);
 }
