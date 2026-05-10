@@ -1,4 +1,4 @@
-FROM oven/bun:1.2.5-bookworm AS deps
+FROM oven/bun:1.2.5-debian AS deps
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY . .
 RUN bun run prisma:generate
 RUN bun run build
 
-FROM oven/bun:1.2.5-bookworm AS runner
+FROM oven/bun:1.2.5-debian AS runner
 
 WORKDIR /app
 
