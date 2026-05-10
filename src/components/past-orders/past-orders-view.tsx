@@ -758,12 +758,13 @@ function ReceiptImportModal({
 }
 
 function DraftItemRow({ item, onChange, onRemove, supermarket }: { item: DraftItem; onChange: (patch: Partial<DraftItem>) => void; onRemove: () => void; supermarket: "AH" | "JUMBO" }) {
+  const inputFocusedRef = useRef(false);
   const [aliasSuggestions, setAliasSuggestions] = useState<AliasSuggestion[]>([]);
 
   useEffect(() => {
     const code = item.receiptName.trim();
 
-    if (code.length < 2) {
+    if (!inputFocusedRef.current || code.length < 2) {
       setAliasSuggestions([]);
       return;
     }
@@ -777,7 +778,9 @@ function DraftItemRow({ item, onChange, onRemove, supermarket }: { item: DraftIt
         const aliases = payload.aliases ?? [];
         const exact = aliases.find((alias) => alias.exact);
 
-        setAliasSuggestions(aliases.filter((alias) => !alias.exact));
+        if (inputFocusedRef.current) {
+          setAliasSuggestions(aliases.filter((alias) => !alias.exact));
+        }
 
         if (exact && item.product?.id !== exact.product.id) {
           onChange({ product: exact.product });
@@ -798,7 +801,20 @@ function DraftItemRow({ item, onChange, onRemove, supermarket }: { item: DraftIt
   return (
     <article className="grid grid-cols-1 lg:grid-cols-[1fr_110px_120px_1.1fr_1.4fr_auto] gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3">
       <div className="relative flex flex-col gap-2">
-        <input onChange={(event) => onChange({ receiptName: event.target.value })} placeholder="Receipt name / codename" value={item.receiptName} />
+        <input
+          onBlur={() => {
+            window.setTimeout(() => {
+              inputFocusedRef.current = false;
+              setAliasSuggestions([]);
+            }, 120);
+          }}
+          onChange={(event) => onChange({ receiptName: event.target.value })}
+          onFocus={() => {
+            inputFocusedRef.current = true;
+          }}
+          placeholder="Receipt name / codename"
+          value={item.receiptName}
+        />
         {aliasSuggestions.length ? (
           <div className="absolute left-0 right-0 top-12 z-20 max-h-60 overflow-y-auto rounded-2xl border border-gray-100 bg-white p-2 shadow-xl">
             {aliasSuggestions.map((suggestion) => (
@@ -806,6 +822,7 @@ function DraftItemRow({ item, onChange, onRemove, supermarket }: { item: DraftIt
                 className="block w-full rounded-xl px-3 py-2 text-left text-xs hover:bg-blue-50"
                 key={suggestion.id}
                 onClick={() => {
+                  inputFocusedRef.current = false;
                   onChange({ receiptName: suggestion.alias, product: suggestion.product });
                   setAliasSuggestions([]);
                 }}
