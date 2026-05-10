@@ -24,6 +24,7 @@ type DraftItem = {
 
 type DraftOrder = {
   localId: string;
+  orderedAt: string;
   items: DraftItem[];
   meta: {
     rawReceiptText: string | null;
@@ -60,6 +61,7 @@ function newDraftItem(): DraftItem {
 function newDraftOrder(): DraftOrder {
   return {
     localId: crypto.randomUUID(),
+    orderedAt: new Date().toISOString().slice(0, 16),
     items: [newDraftItem()],
     meta: { rawReceiptText: null, receiptImageName: null, total: null },
   };
@@ -125,7 +127,6 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
   const [supermarket, setSupermarket] = useState<"AH" | "JUMBO">("JUMBO");
   const [payerId, setPayerId] = useState(initialPeople[0]?.id ?? "");
   const [participantIds, setParticipantIds] = useState<string[]>(initialPeople.slice(0, 2).map((person) => person.id));
-  const [orderedAt, setOrderedAt] = useState(() => new Date().toISOString().slice(0, 16));
   const [draftOrders, setDraftOrders] = useState<DraftOrder[]>([newDraftOrder()]);
   const [activeDraftOrderIndex, setActiveDraftOrderIndex] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
@@ -139,6 +140,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
   const peopleSummary = useMemo(() => buildPeopleSummary(people, orders), [orders, people]);
   const activeDraftOrder = draftOrders[Math.min(activeDraftOrderIndex, draftOrders.length - 1)] ?? draftOrders[0];
   const draftItems = activeDraftOrder?.items ?? [];
+  const orderedAt = activeDraftOrder?.orderedAt ?? new Date().toISOString().slice(0, 16);
   const receiptMeta = activeDraftOrder?.meta ?? { rawReceiptText: null, receiptImageName: null, total: null };
   const draftTotal = draftItems.reduce((sum, item) => sum + item.totalPrice, 0);
 
@@ -190,6 +192,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
 
         scannedOrders.push({
           localId: crypto.randomUUID(),
+          orderedAt: payload.result.orderedAt ? new Date(payload.result.orderedAt).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
           items: payload.result.items.map((item) => ({ ...item, localId: crypto.randomUUID() })),
           meta: {
             rawReceiptText: payload.result.rawReceiptText,
@@ -198,9 +201,6 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
           },
         });
 
-        if (payload.result.orderedAt) {
-          setOrderedAt(new Date(payload.result.orderedAt).toISOString().slice(0, 16));
-        }
       }
 
       setDraftOrders(scannedOrders.length ? scannedOrders : [newDraftOrder()]);
@@ -278,6 +278,10 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
 
   function removeDraftItem(localId: string) {
     setDraftOrders((current) => current.map((order, index) => (index === activeDraftOrderIndex ? { ...order, items: order.items.filter((item) => item.localId !== localId) } : order)));
+  }
+
+  function updateActiveDraftOrderedAt(value: string) {
+    setDraftOrders((current) => current.map((order, index) => (index === activeDraftOrderIndex ? { ...order, orderedAt: value } : order)));
   }
 
   async function loadImportFiles(files: FileList | null) {
@@ -529,7 +533,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
             </label>
             <label className="flex flex-col gap-2 text-sm">
               Date
-              <input onChange={(event) => setOrderedAt(event.target.value)} type="datetime-local" value={orderedAt} />
+              <input onChange={(event) => updateActiveDraftOrderedAt(event.target.value)} type="datetime-local" value={orderedAt} />
             </label>
           </div>
 
