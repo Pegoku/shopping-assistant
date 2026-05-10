@@ -845,11 +845,10 @@ function DraftItemRow({ item, onChange, onRemove, supermarket }: { item: DraftIt
 }
 
 function DealPicker({ dealText, onChange }: { dealText: string | null; onChange: (dealText: string | null) => void }) {
-  const [kind, setKind] = useState<"none" | "bogo" | "percent" | "amount" | "custom">(dealText ? "custom" : "none");
+  const [kind, setKind] = useState<"none" | "bogo" | "percent" | "amount">(dealText === "1+1 free" ? "bogo" : dealText?.includes("% off") ? "percent" : dealText?.includes("€") ? "amount" : "none");
   const [value, setValue] = useState("");
-  const [custom, setCustom] = useState(dealText ?? "");
 
-  function apply(nextKind: typeof kind, nextValue = value, nextCustom = custom) {
+  function apply(nextKind: typeof kind, nextValue = value) {
     setKind(nextKind);
 
     if (nextKind === "none") {
@@ -869,10 +868,7 @@ function DealPicker({ dealText, onChange }: { dealText: string | null; onChange:
 
     if (nextKind === "amount") {
       onChange(nextValue ? `€${nextValue} off` : null);
-      return;
     }
-
-    onChange(nextCustom.trim() || null);
   }
 
   return (
@@ -882,7 +878,6 @@ function DealPicker({ dealText, onChange }: { dealText: string | null; onChange:
         <option value="bogo">1+1 free</option>
         <option value="percent">% off</option>
         <option value="amount">€ off</option>
-        <option value="custom">Custom</option>
       </select>
       {kind === "percent" || kind === "amount" ? (
         <input
@@ -895,16 +890,6 @@ function DealPicker({ dealText, onChange }: { dealText: string | null; onChange:
           step="0.01"
           type="number"
           value={value}
-        />
-      ) : null}
-      {kind === "custom" ? (
-        <input
-          onChange={(event) => {
-            setCustom(event.target.value);
-            apply("custom", value, event.target.value);
-          }}
-          placeholder="Custom deal"
-          value={custom}
         />
       ) : null}
       {dealText ? <span className="rounded-full bg-orange-50 px-3 py-1 text-xs text-orange-700">{dealText}</span> : null}
