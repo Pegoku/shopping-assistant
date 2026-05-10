@@ -95,6 +95,51 @@ function normalizeReceiptCode(value: string) {
     .replace(/\s+/g, " ");
 }
 
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function getDraftUnitPrice(item: DraftItem) {
+  if (item.product?.currentPrice) {
+    return item.product.currentPrice;
+  }
+
+  if (typeof item.unitPrice === "number" && item.unitPrice > 0) {
+    return item.unitPrice;
+  }
+
+  return item.quantity > 0 ? item.totalPrice / item.quantity : item.totalPrice;
+}
+
+function calculateDealTotal(item: DraftItem, dealText: string | null) {
+  const quantity = Math.max(item.quantity, 1);
+  const unitPrice = getDraftUnitPrice(item);
+  const baseTotal = unitPrice * quantity;
+
+  if (!dealText) {
+    return roundMoney(baseTotal);
+  }
+
+  if (dealText === "1+1 free") {
+    return roundMoney(unitPrice * Math.ceil(quantity / 2));
+  }
+
+  const percentMatch = dealText.match(/([\d.]+)% off/);
+
+  if (percentMatch) {
+    const percent = Math.min(Math.max(Number(percentMatch[1]), 0), 100);
+    return roundMoney(baseTotal * (1 - percent / 100));
+  }
+
+  const amountMatch = dealText.match(/€([\d.]+) off/);
+
+  if (amountMatch) {
+    return roundMoney(Math.max(0, baseTotal - Number(amountMatch[1])));
+  }
+
+  return roundMoney(baseTotal);
+}
+
 function buildPeopleSummary(people: PersonData[], orders: PastOrderData[]) {
   return people.map((person) => {
     const paidOrderCount = orders.filter((order) => order.payer?.id === person.id).length;
@@ -835,10 +880,37 @@ function DraftItemRow({ item, onChange, onRemove, supermarket }: { item: DraftIt
           </div>
         ) : null}
       </div>
-      <input min={0.01} onChange={(event) => onChange({ quantity: Number(event.target.value) })} step="0.01" type="number" value={item.quantity} />
-      <input min={0} onChange={(event) => onChange({ totalPrice: Number(event.target.value) })} step="0.01" type="number" value={item.totalPrice} />
-      <DealPicker dealText={item.dealText} onChange={(dealText) => onChange({ dealText })} />
-      <ProductPicker onSelect={(product) => onChange({ product })} priceHint={item.totalPrice} selected={item.product} supermarket={supermarket} />
+      <input
+        min={0.01}
+        onChange={(event) => {
+          const quantity = Number(event.target.value);
+          const nextItem = { ...item, quantity };
+          onChange({ quantity, totalPrice: calculateDealTotal(nextItem, item.dealText) });
+        }}
+        step="0.01"
+        type="number"
+        value={item.quantity}
+      />
+      <input
+        min={0}
+        onChange={(event) => {
+          const totalPrice = Number(event.target.value);
+          onChange({ totalPrice, unitPrice: item.quantity > 0 ? totalPrice / item.quantity : totalPrice, dealText: null });
+        }}
+        step="0.01"
+        type="number"
+        value={item.totalPrice}
+      />
+      <DealPicker dealText={item.dealText} onChange={(dealText) => onChange({ dealText, unitPrice: getDraftUnitPrice(item), totalPrice: calculateDealTotal(item, dealText) })} />
+      <ProductPicker
+        onSelect={(product) => {
+          const nextItem = { ...item, product, unitPrice: product?.currentPrice ?? item.unitPrice };
+          onChange({ product, unitPrice: nextItem.unitPrice, totalPrice: calculateDealTotal(nextItem, item.dealText) });
+        }}
+        priceHint={item.totalPrice}
+        selected={item.product}
+        supermarket={supermarket}
+      />
       <button className="rounded-full bg-white px-3 py-2 text-sm text-gray-600" onClick={onRemove} type="button">Remove</button>
     </article>
   );
