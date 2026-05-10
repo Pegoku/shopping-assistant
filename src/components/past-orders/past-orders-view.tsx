@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AddToCartButton } from "@/components/product/add-to-cart-button";
 import { FavouriteButton } from "@/components/product/favourite-button";
 import { useCart } from "@/components/providers/cart-provider";
@@ -516,6 +516,8 @@ function ProductPicker({ selected, supermarket, onSelect }: { selected: ProductC
 }
 
 function OrderItemCard({ item, order, people, language, onOrderChange }: { item: PastOrderItemData; order: PastOrderData; people: PersonData[]; language: "en" | "es"; onOrderChange: (order: PastOrderData) => void }) {
+  const initializedRef = useRef(false);
+  const saveTimeoutRef = useRef<number | null>(null);
   const [shares, setShares] = useState(() => {
     const shareMap = new Map(item.shares.map((share) => [share.personId, share.percent]));
     return people.map((person) => ({ personId: person.id, percent: shareMap.get(person.id) ?? 0 }));
@@ -549,6 +551,27 @@ function OrderItemCard({ item, order, people, language, onOrderChange }: { item:
       return current.map((share) => (share.personId === personId ? { ...share, percent: nextPercent } : share));
     });
   }
+
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      return;
+    }
+
+    if (saveTimeoutRef.current) {
+      window.clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = window.setTimeout(() => {
+      void saveShares();
+    }, 450);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        window.clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [shares]);
 
   async function linkProduct(product: ProductCardData | null) {
     const response = await fetch(`/api/past-orders/${order.id}/items/${item.id}/link`, {
@@ -624,7 +647,7 @@ function OrderItemCard({ item, order, people, language, onOrderChange }: { item:
               );
             })}
           </div>
-          <button className="mt-3 rounded-full bg-gray-900 px-4 py-2 text-sm text-white" onClick={saveShares} type="button">Save split</button>
+          <p className="mt-3 text-xs text-gray-500">Split changes save automatically.</p>
         </div>
       </div>
     </article>
