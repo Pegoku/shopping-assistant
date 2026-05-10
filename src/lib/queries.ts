@@ -411,6 +411,15 @@ export async function getProducts(input: ProductQueryInput = {}): Promise<Produc
           return (left.product.currentUnitPrice ?? Number.MAX_SAFE_INTEGER) - (right.product.currentUnitPrice ?? Number.MAX_SAFE_INTEGER) || right.score - left.score;
         }
 
+        if (typeof input.priceHint === "number" && Number.isFinite(input.priceHint)) {
+          const leftDistance = Math.abs(left.product.currentPrice - input.priceHint);
+          const rightDistance = Math.abs(right.product.currentPrice - input.priceHint);
+
+          if (Math.abs(leftDistance - rightDistance) > 0.01) {
+            return leftDistance - rightDistance;
+          }
+        }
+
         return right.score - left.score || left.product.currentPrice - right.product.currentPrice;
       })
       .map((entry) => entry.product);

@@ -746,13 +746,13 @@ function DraftItemRow({ item, onChange, onRemove, supermarket }: { item: DraftIt
       <input onChange={(event) => onChange({ receiptName: event.target.value })} placeholder="Receipt name / codename" value={item.receiptName} />
       <input min={0.01} onChange={(event) => onChange({ quantity: Number(event.target.value) })} step="0.01" type="number" value={item.quantity} />
       <input min={0} onChange={(event) => onChange({ totalPrice: Number(event.target.value) })} step="0.01" type="number" value={item.totalPrice} />
-      <ProductPicker onSelect={(product) => onChange({ product })} selected={item.product} supermarket={supermarket} />
+      <ProductPicker onSelect={(product) => onChange({ product })} priceHint={item.totalPrice} selected={item.product} supermarket={supermarket} />
       <button className="rounded-full bg-white px-3 py-2 text-sm text-gray-600" onClick={onRemove} type="button">Remove</button>
     </article>
   );
 }
 
-function ProductPicker({ selected, supermarket, onSelect }: { selected: ProductCardData | null; supermarket: "AH" | "JUMBO"; onSelect: (product: ProductCardData | null) => void }) {
+function ProductPicker({ selected, supermarket, onSelect, priceHint }: { selected: ProductCardData | null; supermarket: "AH" | "JUMBO"; onSelect: (product: ProductCardData | null) => void; priceHint?: number | null }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ProductCardData[]>([]);
@@ -768,6 +768,10 @@ function ProductPicker({ selected, supermarket, onSelect }: { selected: ProductC
     }
 
     const params = new URLSearchParams({ search: value, supermarket, limit: "60" });
+
+    if (typeof priceHint === "number" && Number.isFinite(priceHint) && priceHint > 0) {
+      params.set("priceHint", String(priceHint));
+    }
     const response = await fetch(`/api/products?${params.toString()}`, { cache: "no-store" });
     const payload = (await response.json()) as { products: ProductCardData[] };
     setResults(payload.products);
@@ -983,7 +987,7 @@ function OrderItemCard({
 
         {item.product ? <div className="flex flex-wrap gap-2"><AddToCartButton item={productToCartItem(item.product, item.quantity)} /><FavouriteButton className="h-11 w-11" item={toFavouriteItem(item.product)} /></div> : null}
 
-        <ProductPicker onSelect={linkProduct} selected={item.product} supermarket={order.supermarket} />
+        <ProductPicker onSelect={linkProduct} priceHint={item.totalPrice} selected={item.product} supermarket={order.supermarket} />
 
         <div className="rounded-2xl bg-gray-50 p-3">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

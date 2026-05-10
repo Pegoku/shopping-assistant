@@ -33,6 +33,7 @@ export type ProductQueryInput = {
   dealsOnly?: boolean;
   offset?: number;
   limit?: number;
+  priceHint?: number;
 };
 
 export type ProductQueryResult = {

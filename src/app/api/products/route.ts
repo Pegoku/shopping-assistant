@@ -12,6 +12,7 @@ export async function GET(request: Request) {
     dealsOnly: searchParams.get("dealsOnly") === "true",
     offset: searchParams.get("offset") ? Number(searchParams.get("offset")) : undefined,
     limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
+    priceHint: searchParams.get("priceHint") ? Number(searchParams.get("priceHint")) : undefined,
   };
 
   const result = await getProducts(input);
