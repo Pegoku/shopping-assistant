@@ -47,6 +47,31 @@ function productToCartItem(product: ProductCardData, quantity: number): CartItem
   return { ...toCartItem(product), quantity: Math.max(1, Math.floor(quantity)) };
 }
 
+function buildPeopleSummary(people: PersonData[], orders: PastOrderData[]) {
+  return people.map((person) => {
+    const paidOrderCount = orders.filter((order) => order.payer?.id === person.id).length;
+    const assignedSpend = orders.reduce(
+      (orderSum, order) =>
+        orderSum +
+        order.items.reduce(
+          (itemSum, item) => itemSum + item.shares.filter((share) => share.personId === person.id).reduce((shareSum, share) => shareSum + item.totalPrice * (share.percent / 100), 0),
+          0,
+        ),
+      0,
+    );
+    const owes = orders.reduce(
+      (sum, order) => sum + order.settlement.filter((row) => row.fromPersonId === person.id && !row.paidAt).reduce((rowSum, row) => rowSum + row.amount, 0),
+      0,
+    );
+    const isOwed = orders.reduce(
+      (sum, order) => sum + order.settlement.filter((row) => row.toPersonId === person.id && !row.paidAt).reduce((rowSum, row) => rowSum + row.amount, 0),
+      0,
+    );
+
+    return { ...person, paidOrderCount, assignedSpend, owes, isOwed, net: isOwed - owes };
+  });
+}
+
 export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewProps) {
   const { addItems, items: cartItems } = useCart();
   const { addItems: addFavouriteItems, items: favouriteItems } = useFavourites();
@@ -66,6 +91,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
 
   const cartIds = useMemo(() => new Set(cartItems.map((item) => item.id)), [cartItems]);
   const favouriteIds = useMemo(() => new Set(favouriteItems.map((item) => item.id)), [favouriteItems]);
+  const peopleSummary = useMemo(() => buildPeopleSummary(people, orders), [orders, people]);
   const draftTotal = draftItems.reduce((sum, item) => sum + item.totalPrice, 0);
 
   async function addPerson() {
@@ -180,6 +206,26 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
     setDraftItems((current) => current.map((item) => (item.localId === localId ? { ...item, ...patch } : item)));
   }
 
+  async function toggleSettlementPaid(order: PastOrderData, row: PastOrderData["settlement"][number]) {
+    const response = await fetch(`/api/past-orders/${order.id}/settlement`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fromPersonId: row.fromPersonId,
+        toPersonId: row.toPersonId,
+        paid: !row.paidAt,
+      }),
+    });
+    const payload = (await response.json()) as { order?: PastOrderData; error?: string };
+
+    if (!response.ok || !payload.order) {
+      setFeedback(payload.error ?? "Failed to update payment status");
+      return;
+    }
+
+    setOrders((current) => current.map((entry) => (entry.id === payload.order!.id ? payload.order! : entry)));
+  }
+
   return (
     <section className="flex flex-col gap-6">
       <section className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.4fr] gap-5">
@@ -187,7 +233,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
           <div>
             <p className="text-xs tracking-wide uppercase text-gray-500 font-medium">People</p>
             <h1 className="mt-2 text-3xl font-bold text-gray-900">Aclarar cuentas</h1>
-            <p className="mt-2 text-sm text-gray-500">Save people once, then split every receipt line. New orders default to equal shares across selected participants.</p>
+            <p className="mt-2 text-sm text-gray-500">Save people once, then click people on each receipt line to assign it. The selected people split that line evenly by default.</p>
           </div>
 
           <div className="flex gap-2">
@@ -207,6 +253,33 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
                 {person.name}
               </label>
             ))}
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-gray-50">
+            <table className="w-full min-w-[560px] text-left text-sm">
+              <thead className="bg-white text-xs uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Person</th>
+                  <th className="px-3 py-2 font-medium">Orders paid</th>
+                  <th className="px-3 py-2 font-medium">Their items</th>
+                  <th className="px-3 py-2 font-medium">They owe</th>
+                  <th className="px-3 py-2 font-medium">Owed to them</th>
+                  <th className="px-3 py-2 font-medium">Net</th>
+                </tr>
+              </thead>
+              <tbody>
+                {peopleSummary.map((person) => (
+                  <tr className="border-t border-gray-100" key={person.id}>
+                    <td className="px-3 py-2 font-medium text-gray-900">{person.name}</td>
+                    <td className="px-3 py-2">{person.paidOrderCount}</td>
+                    <td className="px-3 py-2">{formatCurrency(person.assignedSpend)}</td>
+                    <td className="px-3 py-2 text-red-700">{formatCurrency(person.owes)}</td>
+                    <td className="px-3 py-2 text-emerald-700">{formatCurrency(person.isOwed)}</td>
+                    <td className={`px-3 py-2 font-semibold ${person.net < 0 ? "text-red-700" : "text-emerald-700"}`}>{formatCurrency(person.net)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -282,7 +355,12 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
                 {order.settlement.length ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 rounded-2xl bg-emerald-50 p-3">
                     {order.settlement.map((row) => (
-                      <div className="rounded-xl bg-white px-3 py-2 text-sm text-emerald-900" key={`${row.fromPersonId}-${row.toPersonId}`}>{row.fromName} pays {row.toName} <strong>{formatCurrency(row.amount)}</strong></div>
+                      <div className={`flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-sm ${row.paidAt ? "text-gray-500 line-through" : "text-emerald-900"}`} key={`${row.fromPersonId}-${row.toPersonId}`}>
+                        <span>{row.fromName} pays {row.toName} <strong>{formatCurrency(row.amount)}</strong></span>
+                        <button className={`rounded-full px-3 py-1 text-xs no-underline ${row.paidAt ? "bg-emerald-100 text-emerald-700" : "bg-gray-900 text-white"}`} onClick={() => void toggleSettlementPaid(order, row)} type="button">
+                          {row.paidAt ? "✓ Paid" : `Mark ${row.fromName} paid`}
+                        </button>
+                      </div>
                     ))}
                   </div>
                 ) : null}

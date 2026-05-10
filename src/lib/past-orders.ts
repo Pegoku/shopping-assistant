@@ -31,7 +31,6 @@ function productInclude() {
       },
       take: 8,
     },
-    settlementPayments: true,
   };
 }
 
@@ -51,6 +50,7 @@ function orderInclude() {
         },
       },
     },
+    settlementPayments: true,
   };
 }
 
