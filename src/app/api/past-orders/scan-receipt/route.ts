@@ -16,7 +16,7 @@ type AiReceiptResponse = {
   }>;
 };
 
-async function callReceiptAi(image: File, supermarket: Supermarket) {
+async function callReceiptAi(receiptFile: File, supermarket: Supermarket) {
   const apiKey = process.env.HACKCLUB_AI_API_KEY;
   const baseUrl = process.env.HACKCLUB_AI_BASE_URL;
   const model = process.env.HACKCLUB_AI_RECEIPT_MODEL ?? "google/gemini-3.1-flash-lite";
@@ -25,8 +25,9 @@ async function callReceiptAi(image: File, supermarket: Supermarket) {
     throw new Error("Missing HACKCLUB_AI_API_KEY or HACKCLUB_AI_BASE_URL");
   }
 
-  const buffer = Buffer.from(await image.arrayBuffer());
-  const dataUrl = `data:${image.type || "image/jpeg"};base64,${buffer.toString("base64")}`;
+  const buffer = Buffer.from(await receiptFile.arrayBuffer());
+  const contentType = receiptFile.type || (receiptFile.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+  const dataUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -49,7 +50,7 @@ async function callReceiptAi(image: File, supermarket: Supermarket) {
           content: [
             {
               type: "text",
-              text: `Scan this ${supermarket} receipt. The selected supermarket is authoritative; do not match products from another supermarket.`,
+              text: `Scan this ${supermarket} receipt file. It may be an image or PDF. The selected supermarket is authoritative; do not match products from another supermarket.`,
             },
             {
               type: "image_url",
@@ -78,18 +79,24 @@ async function callReceiptAi(image: File, supermarket: Supermarket) {
 export async function POST(request: Request) {
   const formData = await request.formData();
   const selectedStore = formData.get("supermarket");
-  const image = formData.get("image");
+  const receiptFile = formData.get("image");
 
   if (selectedStore !== "AH" && selectedStore !== "JUMBO") {
     return NextResponse.json({ error: "Choose AH or JUMBO before scanning" }, { status: 400 });
   }
 
-  if (!(image instanceof File)) {
-    return NextResponse.json({ error: "Missing receipt image" }, { status: 400 });
+  if (!(receiptFile instanceof File)) {
+    return NextResponse.json({ error: "Missing receipt image or PDF" }, { status: 400 });
+  }
+
+  const supportedType = receiptFile.type.startsWith("image/") || receiptFile.type === "application/pdf" || receiptFile.name.toLowerCase().endsWith(".pdf");
+
+  if (!supportedType) {
+    return NextResponse.json({ error: "Receipt must be an image or PDF" }, { status: 400 });
   }
 
   try {
-    const parsed = await callReceiptAi(image, selectedStore as Supermarket);
+    const parsed = await callReceiptAi(receiptFile, selectedStore as Supermarket);
     const items = (parsed.items ?? [])
       .map((item) => ({
         receiptName: item.receiptName?.trim() ?? "",
@@ -106,7 +113,7 @@ export async function POST(request: Request) {
         orderedAt: parsed.orderedAt ?? null,
         total: typeof parsed.total === "number" ? parsed.total : matchedItems.reduce((sum, item) => sum + item.totalPrice, 0),
         rawReceiptText: parsed.rawReceiptText ?? null,
-        receiptImageName: image.name,
+        receiptImageName: receiptFile.name,
         items: matchedItems,
         notes: parsed.notes ?? null,
       },

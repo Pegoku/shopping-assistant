@@ -59,7 +59,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
   const [participantIds, setParticipantIds] = useState<string[]>(initialPeople.slice(0, 2).map((person) => person.id));
   const [orderedAt, setOrderedAt] = useState(() => new Date().toISOString().slice(0, 16));
   const [draftItems, setDraftItems] = useState<DraftItem[]>([newDraftItem()]);
-  const [receiptImage, setReceiptImage] = useState<File | null>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptMeta, setReceiptMeta] = useState<{ rawReceiptText: string | null; receiptImageName: string | null; total: number | null }>({ rawReceiptText: null, receiptImageName: null, total: null });
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -92,8 +92,8 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
   }
 
   async function scanReceipt() {
-    if (!receiptImage) {
-      setFeedback("Choose a receipt image first.");
+    if (!receiptFile) {
+      setFeedback("Choose a receipt image or PDF first.");
       return;
     }
 
@@ -103,7 +103,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
     try {
       const formData = new FormData();
       formData.set("supermarket", supermarket);
-      formData.set("image", receiptImage);
+      formData.set("image", receiptFile);
       const response = await fetch("/api/past-orders/scan-receipt", { method: "POST", body: formData });
       const payload = (await response.json()) as { result?: ReceiptScanResult & { receiptImageName?: string | null }; error?: string };
 
@@ -112,7 +112,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
       }
 
       setDraftItems(payload.result.items.map((item) => ({ ...item, localId: crypto.randomUUID() })));
-      setReceiptMeta({ rawReceiptText: payload.result.rawReceiptText, receiptImageName: payload.result.receiptImageName ?? receiptImage.name, total: payload.result.total });
+      setReceiptMeta({ rawReceiptText: payload.result.rawReceiptText, receiptImageName: payload.result.receiptImageName ?? receiptFile.name, total: payload.result.total });
       if (payload.result.orderedAt) {
         setOrderedAt(new Date(payload.result.orderedAt).toISOString().slice(0, 16));
       }
@@ -167,7 +167,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
       setOrders((current) => [payload.order!, ...current]);
       setDraftItems([newDraftItem()]);
       setReceiptMeta({ rawReceiptText: null, receiptImageName: null, total: null });
-      setReceiptImage(null);
+      setReceiptFile(null);
       setFeedback("Order saved.");
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Failed to save order");
@@ -231,13 +231,13 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
               <input onChange={(event) => setOrderedAt(event.target.value)} type="datetime-local" value={orderedAt} />
             </label>
             <label className="flex flex-col gap-2 text-sm">
-              Receipt image
-              <input accept="image/*" onChange={(event) => setReceiptImage(event.target.files?.[0] ?? null)} type="file" />
+              Receipt image or PDF
+              <input accept="image/*,application/pdf" onChange={(event) => setReceiptFile(event.target.files?.[0] ?? null)} type="file" />
             </label>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button className="rounded-full bg-blue-600 px-4 py-3 text-sm text-white disabled:opacity-50" disabled={loading || !receiptImage} onClick={scanReceipt} type="button">{loading ? "Working..." : "Scan ticket with AI"}</button>
+            <button className="rounded-full bg-blue-600 px-4 py-3 text-sm text-white disabled:opacity-50" disabled={loading || !receiptFile} onClick={scanReceipt} type="button">{loading ? "Working..." : "Scan ticket with AI"}</button>
             <button className="rounded-full bg-gray-100 px-4 py-3 text-sm text-gray-700" onClick={() => setDraftItems((current) => [...current, newDraftItem()])} type="button">Add manual item</button>
             <button className="rounded-full bg-gray-900 px-4 py-3 text-sm text-white disabled:opacity-50" disabled={loading} onClick={() => void saveOrder()} type="button">Save order · {formatCurrency(receiptMeta.total ?? draftTotal)}</button>
           </div>
@@ -299,7 +299,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
       ) : (
         <section className="rounded-3xl border border-gray-100 bg-white p-6 text-center shadow-sm">
           <h2 className="text-3xl font-bold text-gray-900">No past orders yet</h2>
-          <p className="mt-2 text-gray-500">Add one manually or scan a ticket image.</p>
+          <p className="mt-2 text-gray-500">Add one manually or scan a ticket image/PDF.</p>
         </section>
       )}
     </section>
@@ -319,10 +319,12 @@ function DraftItemRow({ item, onChange, onRemove, supermarket }: { item: DraftIt
 }
 
 function ProductPicker({ selected, supermarket, onSelect }: { selected: ProductCardData | null; supermarket: "AH" | "JUMBO"; onSelect: (product: ProductCardData | null) => void }) {
+  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ProductCardData[]>([]);
   const [url, setUrl] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
 
   async function searchProducts(value: string) {
     setQuery(value);
@@ -354,24 +356,81 @@ function ProductPicker({ selected, supermarket, onSelect }: { selected: ProductC
     onSelect(payload.product);
     setMessage("Product imported and selected.");
     setUrl("");
+    setShowImport(false);
+    setOpen(false);
+  }
+
+  function selectProduct(product: ProductCardData | null) {
+    onSelect(product);
+    setOpen(false);
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {selected ? <p className="rounded-xl bg-white px-3 py-2 text-xs text-gray-700">Linked: <strong>{selected.originalName}</strong></p> : <p className="text-xs text-gray-500">No product linked</p>}
-      <input onChange={(event) => void searchProducts(event.target.value)} placeholder={`Search ${supermarket} products only`} value={query} />
-      {results.length ? (
-        <div className="max-h-44 overflow-y-auto rounded-xl border border-gray-100 bg-white">
-          {results.map((product) => (
-            <button className="block w-full px-3 py-2 text-left text-xs hover:bg-gray-50" key={product.id} onClick={() => onSelect(product)} type="button">{product.originalName} · {formatCurrency(product.currentPrice)}</button>
-          ))}
+    <div>
+      <button
+        className="grid w-full grid-cols-[56px_1fr_auto] items-center gap-3 rounded-2xl border border-gray-200 bg-white p-2.5 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40"
+        onClick={() => setOpen(true)}
+        type="button"
+      >
+        <span className="relative h-14 w-14 overflow-hidden rounded-xl bg-gradient-to-br from-gray-50 to-gray-100">
+          {selected?.imageUrl ? <Image alt={selected.originalName} fill sizes="56px" src={getShareableImageUrl(selected)} /> : <span className="grid h-full place-items-center text-[10px] text-gray-400">No image</span>}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[10px] uppercase tracking-wide text-gray-500">Linked product</span>
+          <span className="mt-0.5 block truncate text-sm font-semibold text-gray-900">{selected?.originalName ?? "Select or import a product"}</span>
+          <span className="mt-0.5 block truncate text-xs text-gray-500">{selected ? `${selected.supermarket} · ${formatCurrency(selected.currentPrice)}` : `${supermarket} products only`}</span>
+        </span>
+        <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs text-gray-700">Change</span>
+      </button>
+
+      {open ? (
+        <div className="fixed inset-0 z-[100] flex items-start justify-center bg-gray-950/55 px-4 py-8 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="relative flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-100 p-5">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-blue-600">Product finder</p>
+                <h3 className="mt-1 text-2xl font-bold text-gray-900">Link this receipt line to a {supermarket} item</h3>
+                <p className="mt-1 text-sm text-gray-500">Corrections are saved as receipt aliases, so codenames match better next time.</p>
+              </div>
+              <button className="grid h-10 w-10 place-items-center rounded-full bg-gray-100 text-lg text-gray-700 hover:bg-gray-200" onClick={() => setOpen(false)} type="button" aria-label="Close product finder">×</button>
+            </div>
+
+            <div className="flex flex-col gap-4 overflow-y-auto p-5">
+              <input autoFocus onChange={(event) => void searchProducts(event.target.value)} placeholder={`Search ${supermarket} products only`} value={query} />
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {results.map((product) => (
+                  <button className="grid grid-cols-[76px_1fr] gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 text-left transition hover:border-blue-200 hover:bg-blue-50" key={product.id} onClick={() => selectProduct(product)} type="button">
+                    <span className="relative h-20 w-20 overflow-hidden rounded-xl bg-white">
+                      {product.imageUrl ? <Image alt={product.originalName} fill sizes="80px" src={getShareableImageUrl(product)} /> : <span className="grid h-full place-items-center text-xs text-gray-400">No image</span>}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-gray-900">{product.originalName}</span>
+                      <span className="mt-1 block truncate text-xs text-gray-500">{product.genericNameEn}</span>
+                      <span className="mt-2 block text-sm font-semibold text-gray-900">{formatCurrency(product.currentPrice)} · {product.quantityText}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {query && !results.length ? <p className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-500">No {supermarket} matches found. Try another search or import it from the store website.</p> : null}
+
+              <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4">
+                <button className="rounded-full bg-white px-4 py-2 text-sm text-gray-800 shadow-sm hover:bg-gray-100" onClick={() => setShowImport((current) => !current)} type="button">Not found? Import by link</button>
+                {showImport ? (
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <input className="min-w-0 flex-1" onChange={(event) => setUrl(event.target.value)} placeholder={`${supermarket} product URL`} value={url} />
+                    <button className="rounded-full bg-gray-900 px-4 py-2 text-sm text-white" onClick={importUrl} type="button">Import and select</button>
+                  </div>
+                ) : null}
+                {message ? <p className="mt-2 text-xs text-amber-700">{message}</p> : null}
+              </div>
+
+              {selected ? <button className="self-start rounded-full bg-red-50 px-4 py-2 text-sm text-red-700 hover:bg-red-100" onClick={() => selectProduct(null)} type="button">Clear linked product</button> : null}
+            </div>
+          </div>
         </div>
       ) : null}
-      <div className="flex gap-2">
-        <input className="min-w-0 flex-1" onChange={(event) => setUrl(event.target.value)} placeholder={`${supermarket} product URL`} value={url} />
-        <button className="rounded-full bg-gray-900 px-3 py-2 text-xs text-white" onClick={importUrl} type="button">Import</button>
-      </div>
-      {message ? <p className="text-xs text-amber-700">{message}</p> : null}
     </div>
   );
 }
