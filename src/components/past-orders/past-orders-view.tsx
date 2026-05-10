@@ -647,7 +647,6 @@ function OrderItemCard({ item, order, people, language, onOrderChange }: { item:
               );
             })}
           </div>
-          <p className="mt-3 text-xs text-gray-500">Split changes save automatically.</p>
         </div>
       </div>
     </article>
