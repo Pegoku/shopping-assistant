@@ -114,6 +114,111 @@ function tokenize(value: string) {
     .filter(Boolean);
 }
 
+function levenshteinDistance(left: string, right: string) {
+  if (left === right) {
+    return 0;
+  }
+
+  if (!left.length) {
+    return right.length;
+  }
+
+  if (!right.length) {
+    return left.length;
+  }
+
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  const current = new Array<number>(right.length + 1);
+
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    current[0] = leftIndex;
+
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const cost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + cost,
+      );
+    }
+
+    for (let index = 0; index < previous.length; index += 1) {
+      previous[index] = current[index];
+    }
+  }
+
+  return previous[right.length];
+}
+
+function tokenSimilarity(left: string, right: string) {
+  if (left === right) {
+    return 1;
+  }
+
+  if (left.length >= 3 && right.length >= 3 && (left.startsWith(right) || right.startsWith(left))) {
+    return 0.9;
+  }
+
+  const distance = levenshteinDistance(left, right);
+  const longest = Math.max(left.length, right.length);
+
+  return longest ? 1 - distance / longest : 0;
+}
+
+function getProductSearchTokens(product: ProductCardData) {
+  return tokenize(
+    [
+      product.supermarket,
+      product.supermarket === "AH" ? "albert heijn" : "jumbo",
+      product.originalName,
+      product.genericNameEn,
+      product.genericNameEs,
+      product.quantityText,
+      product.categories.join(" "),
+    ].join(" "),
+  );
+}
+
+function scoreFuzzyProductSearch(product: ProductCardData, search: string) {
+  const queryTokens = tokenize(search);
+
+  if (!queryTokens.length) {
+    return 0;
+  }
+
+  const productTokens = getProductSearchTokens(product);
+  let score = 0;
+
+  for (const queryToken of queryTokens) {
+    let best = 0;
+
+    for (const productToken of productTokens) {
+      best = Math.max(best, tokenSimilarity(queryToken, productToken));
+    }
+
+    if (best < 0.66) {
+      return 0;
+    }
+
+    score += best;
+  }
+
+  const original = tokenize(product.originalName).join(" ");
+  const genericEn = tokenize(product.genericNameEn).join(" ");
+  const genericEs = tokenize(product.genericNameEs).join(" ");
+  const normalizedSearch = queryTokens.join(" ");
+
+  if (original.includes(normalizedSearch) || genericEn.includes(normalizedSearch) || genericEs.includes(normalizedSearch)) {
+    score += 1.5;
+  }
+
+  if (product.isDealActive) {
+    score += 0.05;
+  }
+
+  return score;
+}
+
 function hasWholeTokenMatch(text: string, candidate: string) {
   const tokens = tokenize(text);
   const candidateTokens = tokenize(candidate);
@@ -199,29 +304,11 @@ export async function getProducts(input: ProductQueryInput = {}): Promise<Produc
   const where = {
     ...(input.supermarket && input.supermarket !== "all" ? { supermarket: input.supermarket } : {}),
     ...(input.dealsOnly ? { isDealActive: true } : {}),
-    ...(search
-      ? {
-          OR: [
-            { originalName: { contains: search } },
-            { genericNameEn: { contains: search } },
-            { genericNameEs: { contains: search } },
-            {
-              categories: {
-                some: {
-                  category: {
-                    label: { contains: search },
-                  },
-                },
-              },
-            },
-          ],
-        }
-      : {}),
   };
 
   try {
-    [products, total] = await Promise.all([
-      prisma.product.findMany({
+    if (search) {
+      products = await prisma.product.findMany({
         where,
         include: {
           categories: {
@@ -237,11 +324,32 @@ export async function getProducts(input: ProductQueryInput = {}): Promise<Produc
           },
         },
         orderBy: getOrderBy(sort),
-        skip: offset,
-        take: limit,
-      }),
-      prisma.product.count({ where }),
-    ]);
+      });
+      total = products.length;
+    } else {
+      [products, total] = await Promise.all([
+        prisma.product.findMany({
+          where,
+          include: {
+            categories: {
+              include: {
+                category: true,
+              },
+            },
+            priceHistory: {
+              orderBy: {
+                capturedAt: "desc",
+              },
+              take: 8,
+            },
+          },
+          orderBy: getOrderBy(sort),
+          skip: offset,
+          take: limit,
+        }),
+        prisma.product.count({ where }),
+      ]);
+    }
   } catch (error) {
     if (isMissingTableError(error)) {
       return {
@@ -255,7 +363,29 @@ export async function getProducts(input: ProductQueryInput = {}): Promise<Produc
     throw error;
   }
 
-  const mappedProducts = products.map(mapProductCard);
+  let mappedProducts = products.map(mapProductCard);
+
+  if (search) {
+    mappedProducts = mappedProducts
+      .map((product) => ({
+        product,
+        score: scoreFuzzyProductSearch(product, search),
+      }))
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => {
+        if (sort === "price") {
+          return left.product.currentPrice - right.product.currentPrice || right.score - left.score;
+        }
+
+        if (sort === "unitPrice") {
+          return (left.product.currentUnitPrice ?? Number.MAX_SAFE_INTEGER) - (right.product.currentUnitPrice ?? Number.MAX_SAFE_INTEGER) || right.score - left.score;
+        }
+
+        return right.score - left.score || left.product.currentPrice - right.product.currentPrice;
+      })
+      .map((entry) => entry.product);
+    total = mappedProducts.length;
+  }
 
   if (sort === "dayChange") {
     mappedProducts.sort((left, right) => Math.abs(left.dayOverDayPct ?? 0) - Math.abs(right.dayOverDayPct ?? 0));
@@ -265,11 +395,14 @@ export async function getProducts(input: ProductQueryInput = {}): Promise<Produc
     mappedProducts.sort((left, right) => Math.abs(left.weekOverWeekPct ?? 0) - Math.abs(right.weekOverWeekPct ?? 0));
   }
 
+  const pageProducts = search ? mappedProducts.slice(offset, offset + limit) : mappedProducts;
+  const nextOffset = offset + pageProducts.length;
+
   return {
-    products: mappedProducts,
+    products: pageProducts,
     total,
-    hasMore: offset + mappedProducts.length < total,
-    nextOffset: offset + mappedProducts.length < total ? offset + mappedProducts.length : null,
+    hasMore: nextOffset < total,
+    nextOffset: nextOffset < total ? nextOffset : null,
   };
 }
 
