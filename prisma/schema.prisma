@@ -58,6 +58,8 @@ model Person {
   updatedAt DateTime         @updatedAt
   paidOrders PastOrder[]      @relation("PastOrderPayer")
   itemShares PastOrderItemShare[]
+  settlementPaymentsFrom PastOrderSettlementPayment[] @relation("SettlementPaymentFrom")
+  settlementPaymentsTo   PastOrderSettlementPayment[] @relation("SettlementPaymentTo")
 }
 
 model PastOrder {
@@ -73,9 +75,25 @@ model PastOrder {
   updatedAt       DateTime        @updatedAt
   payer           Person?         @relation("PastOrderPayer", fields: [payerId], references: [id], onDelete: SetNull)
   items           PastOrderItem[]
+  settlementPayments PastOrderSettlementPayment[]
 
   @@index([orderedAt])
   @@index([supermarket])
+}
+
+model PastOrderSettlementPayment {
+  id           String    @id @default(cuid())
+  orderId      String
+  fromPersonId String
+  toPersonId   String
+  paidAt       DateTime  @default(now())
+  order        PastOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromPerson   Person    @relation("SettlementPaymentFrom", fields: [fromPersonId], references: [id], onDelete: Cascade)
+  toPerson     Person    @relation("SettlementPaymentTo", fields: [toPersonId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, fromPersonId, toPersonId])
+  @@index([fromPersonId])
+  @@index([toPersonId])
 }
 
 model PastOrderItem {

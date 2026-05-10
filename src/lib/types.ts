@@ -110,6 +110,7 @@ export type SettlementRow = {
   toPersonId: string;
   toName: string;
   amount: number;
+  paidAt: string | null;
 };
 
 export type PastOrderData = {
