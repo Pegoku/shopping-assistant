@@ -1,4 +1,5 @@
 import { load } from "cheerio";
+import { fetchWithOptionalScraperProxy } from "@/lib/proxied-fetch";
 
 export type CategoryLink = {
   label: string;
@@ -10,7 +11,7 @@ export async function fetchHtml(url: string) {
   const isAlbertHeijn = url.includes("ah.nl");
 
   for (let attempt = 1; attempt <= retries; attempt += 1) {
-    const response = await fetch(url, {
+    const response = await fetchWithOptionalScraperProxy(url, {
       headers: {
         "user-agent":
           "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",

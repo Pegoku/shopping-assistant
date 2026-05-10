@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fetchWithOptionalScraperProxy } from "@/lib/proxied-fetch";
 
 const cacheDir = path.join(process.cwd(), ".image-cache");
 
@@ -103,7 +104,7 @@ export async function getCachedImageFile(url: string): Promise<CachedImageFile> 
 
   await ensureCacheDir();
 
-  const response = await fetch(url);
+  const response = await fetchWithOptionalScraperProxy(url);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch image: ${response.status}`);

@@ -1,4 +1,5 @@
 import { Supermarket } from "@prisma/client";
+import { fetchWithOptionalScraperProxy } from "@/lib/proxied-fetch";
 import type { ScrapeProgressReporter, ScrapeResult, ScrapedProduct } from "@/lib/scrapers/types";
 import {
   absoluteUrl,
@@ -209,7 +210,7 @@ function parseProduct(product: JumboApiProduct, categoryLabel: string): ScrapedP
 async function fetchCategoryPage(category: { label: string; path: string }, offSet: number) {
   const friendlyUrl = category.path.replace(/^\/producten\//, "");
   const urlSuffix = offSet > 0 ? `${friendlyUrl}?offSet=${offSet}` : friendlyUrl;
-  const response = await fetch(graphqlUrl, {
+  const response = await fetchWithOptionalScraperProxy(graphqlUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

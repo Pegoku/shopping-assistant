@@ -1,0 +1,11 @@
+.git
+.next
+node_modules
+.env
+.wwebjs_auth
+.image-cache
+dev.db
+*.db
+*.db-journal
+Dockerfile
+docker-compose.yml

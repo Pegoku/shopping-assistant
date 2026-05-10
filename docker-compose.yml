@@ -1,0 +1,40 @@
+services:
+  app:
+    build: .
+    depends_on:
+      vpn:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      SCRAPER_PROXY_URL: http://vpn:8888
+      WHATSAPP_WEBJS_DATA_PATH: /app/.wwebjs_auth
+      DATABASE_URL: file:/data/dev.db
+    ports:
+      - "3000:3000"
+    volumes:
+      - app-data:/data
+      - whatsapp-auth:/app/.wwebjs_auth
+      - image-cache:/app/.image-cache
+    command: ["sh", "-c", "bun run prisma:push && bun run start"]
+    restart: unless-stopped
+
+  vpn:
+    image: qmcgaw/gluetun:latest
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${PROTONVPN_WIREGUARD_PRIVATE_KEY}
+      SERVER_COUNTRIES: ${PROTONVPN_SERVER_COUNTRIES:-Netherlands}
+      HTTPPROXY: on
+      HTTPPROXY_LISTENING_ADDRESS: :8888
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  whatsapp-auth:
+  image-cache:
