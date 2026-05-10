@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddToCartButton } from "@/components/product/add-to-cart-button";
 import { FavouriteButton } from "@/components/product/favourite-button";
 import { useCart } from "@/components/providers/cart-provider";
@@ -552,6 +552,30 @@ function OrderItemCard({ item, order, people, language, onOrderChange }: { item:
     });
   }
 
+  async function linkProduct(product: ProductCardData | null) {
+    const response = await fetch(`/api/past-orders/${order.id}/items/${item.id}/link`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId: product?.id ?? null }),
+    });
+    const payload = (await response.json()) as { order?: PastOrderData };
+    if (payload.order) {
+      onOrderChange(payload.order);
+    }
+  }
+
+  const saveShares = useCallback(async () => {
+    const response = await fetch(`/api/past-orders/${order.id}/items/${item.id}/shares`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shares }),
+    });
+    const payload = (await response.json()) as { order?: PastOrderData };
+    if (payload.order) {
+      onOrderChange(payload.order);
+    }
+  }, [item.id, onOrderChange, order.id, shares]);
+
   useEffect(() => {
     if (!initializedRef.current) {
       initializedRef.current = true;
@@ -571,31 +595,7 @@ function OrderItemCard({ item, order, people, language, onOrderChange }: { item:
         window.clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [shares]);
-
-  async function linkProduct(product: ProductCardData | null) {
-    const response = await fetch(`/api/past-orders/${order.id}/items/${item.id}/link`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId: product?.id ?? null }),
-    });
-    const payload = (await response.json()) as { order?: PastOrderData };
-    if (payload.order) {
-      onOrderChange(payload.order);
-    }
-  }
-
-  async function saveShares() {
-    const response = await fetch(`/api/past-orders/${order.id}/items/${item.id}/shares`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shares }),
-    });
-    const payload = (await response.json()) as { order?: PastOrderData };
-    if (payload.order) {
-      onOrderChange(payload.order);
-    }
-  }
+  }, [saveShares]);
 
   return (
     <article className="grid grid-cols-1 md:grid-cols-[88px_1fr] gap-4 rounded-2xl border border-gray-100 bg-white/50 p-3.5">
