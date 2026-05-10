@@ -67,8 +67,16 @@ function buildPeopleSummary(people: PersonData[], orders: PastOrderData[]) {
       (sum, order) => sum + order.settlement.filter((row) => row.toPersonId === person.id && !row.paidAt).reduce((rowSum, row) => rowSum + row.amount, 0),
       0,
     );
+    const payees = Array.from(
+      new Map(
+        orders
+          .flatMap((order) => order.settlement)
+          .filter((row) => row.fromPersonId === person.id && !row.paidAt)
+          .map((row) => [row.toPersonId, { id: row.toPersonId, name: row.toName }]),
+      ).values(),
+    ).sort((left, right) => left.name.localeCompare(right.name));
 
-    return { ...person, paidOrderCount, assignedSpend, owes, isOwed, net: isOwed - owes };
+    return { ...person, paidOrderCount, assignedSpend, owes, isOwed, net: isOwed - owes, payees };
   });
 }
 
@@ -226,6 +234,34 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
     setOrders((current) => current.map((entry) => (entry.id === payload.order!.id ? payload.order! : entry)));
   }
 
+  async function markAllPaidTo(fromPersonId: string, toPersonId: string) {
+    const rowsToMark = orders.flatMap((order) =>
+      order.settlement
+        .filter((row) => row.fromPersonId === fromPersonId && !row.paidAt && (toPersonId === "all" || row.toPersonId === toPersonId))
+        .map((row) => ({ order, row })),
+    );
+
+    for (const { order, row } of rowsToMark) {
+      const response = await fetch(`/api/past-orders/${order.id}/settlement`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromPersonId: row.fromPersonId,
+          toPersonId: row.toPersonId,
+          paid: true,
+        }),
+      });
+      const payload = (await response.json()) as { order?: PastOrderData; error?: string };
+
+      if (!response.ok || !payload.order) {
+        setFeedback(payload.error ?? "Failed to update payment status");
+        return;
+      }
+
+      setOrders((current) => current.map((entry) => (entry.id === payload.order!.id ? payload.order! : entry)));
+    }
+  }
+
   return (
     <section className="flex flex-col gap-6">
       <section className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.4fr] gap-5">
@@ -256,7 +292,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
           </div>
 
           <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-gray-50">
-            <table className="w-full min-w-[560px] text-left text-sm">
+            <table className="w-full min-w-[680px] text-left text-sm">
               <thead className="bg-white text-xs uppercase tracking-wide text-gray-500">
                 <tr>
                   <th className="px-3 py-2 font-medium">Person</th>
@@ -265,6 +301,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
                   <th className="px-3 py-2 font-medium">They owe</th>
                   <th className="px-3 py-2 font-medium">Owed to them</th>
                   <th className="px-3 py-2 font-medium">Net</th>
+                  <th className="px-3 py-2 font-medium">Mark paid to</th>
                 </tr>
               </thead>
               <tbody>
@@ -276,6 +313,30 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
                     <td className="px-3 py-2 text-red-700">{formatCurrency(person.owes)}</td>
                     <td className="px-3 py-2 text-emerald-700">{formatCurrency(person.isOwed)}</td>
                     <td className={`px-3 py-2 font-semibold ${person.net < 0 ? "text-red-700" : "text-emerald-700"}`}>{formatCurrency(person.net)}</td>
+                    <td className="px-3 py-2">
+                      {person.payees.length ? (
+                        <select
+                          className="min-w-36 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs"
+                          defaultValue=""
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            event.target.value = "";
+
+                            if (value) {
+                              void markAllPaidTo(person.id, value);
+                            }
+                          }}
+                        >
+                          <option value="">Choose...</option>
+                          {person.payees.length > 1 ? <option value="all">All people</option> : null}
+                          {person.payees.map((payee) => (
+                            <option key={payee.id} value={payee.id}>{payee.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-xs text-gray-400">Nothing owed</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
