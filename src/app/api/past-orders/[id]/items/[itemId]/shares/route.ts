@@ -13,8 +13,8 @@ export async function PATCH(request: Request, { params }: Params) {
     .filter((share) => share.personId && share.percent > 0);
   const total = shares.reduce((sum, share) => sum + share.percent, 0);
 
-  if (Math.abs(total - 100) > 0.5) {
-    return NextResponse.json({ error: "Shares must add up to 100%" }, { status: 400 });
+  if (total > 100.5) {
+    return NextResponse.json({ error: "Shares cannot add up to more than 100%" }, { status: 400 });
   }
 
   try {

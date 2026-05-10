@@ -333,7 +333,7 @@ function ProductPicker({ selected, supermarket, onSelect }: { selected: ProductC
       return;
     }
 
-    const params = new URLSearchParams({ search: value, supermarket, limit: "8" });
+    const params = new URLSearchParams({ search: value, supermarket, limit: "60" });
     const response = await fetch(`/api/products?${params.toString()}`, { cache: "no-store" });
     const payload = (await response.json()) as { products: ProductCardData[] };
     setResults(payload.products);
@@ -398,19 +398,21 @@ function ProductPicker({ selected, supermarket, onSelect }: { selected: ProductC
             <div className="flex flex-col gap-4 overflow-y-auto p-5">
               <input autoFocus onChange={(event) => void searchProducts(event.target.value)} placeholder={`Search ${supermarket} products only`} value={query} />
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {results.map((product) => (
-                  <button className="grid grid-cols-[76px_1fr] gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 text-left transition hover:border-blue-200 hover:bg-blue-50" key={product.id} onClick={() => selectProduct(product)} type="button">
-                    <span className="relative h-20 w-20 overflow-hidden rounded-xl bg-white">
-                      {product.imageUrl ? <Image alt={product.originalName} fill sizes="80px" src={getShareableImageUrl(product)} /> : <span className="grid h-full place-items-center text-xs text-gray-400">No image</span>}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-gray-900">{product.originalName}</span>
-                      <span className="mt-1 block truncate text-xs text-gray-500">{product.genericNameEn}</span>
-                      <span className="mt-2 block text-sm font-semibold text-gray-900">{formatCurrency(product.currentPrice)} · {product.quantityText}</span>
-                    </span>
-                  </button>
-                ))}
+              <div className="max-h-[46vh] overflow-y-auto rounded-2xl border border-gray-100 bg-white p-2 pr-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {results.map((product) => (
+                    <button className="grid grid-cols-[76px_1fr] gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 text-left transition hover:border-blue-200 hover:bg-blue-50" key={product.id} onClick={() => selectProduct(product)} type="button">
+                      <span className="relative h-20 w-20 overflow-hidden rounded-xl bg-white">
+                        {product.imageUrl ? <Image alt={product.originalName} fill sizes="80px" src={getShareableImageUrl(product)} /> : <span className="grid h-full place-items-center text-xs text-gray-400">No image</span>}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-gray-900">{product.originalName}</span>
+                        <span className="mt-1 block truncate text-xs text-gray-500">{product.genericNameEn}</span>
+                        <span className="mt-2 block text-sm font-semibold text-gray-900">{formatCurrency(product.currentPrice)} · {product.quantityText}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {query && !results.length ? <p className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-500">No {supermarket} matches found. Try another search or import it from the store website.</p> : null}
@@ -440,6 +442,35 @@ function OrderItemCard({ item, order, people, language, onOrderChange }: { item:
     const shareMap = new Map(item.shares.map((share) => [share.personId, share.percent]));
     return people.map((person) => ({ personId: person.id, percent: shareMap.get(person.id) ?? 0 }));
   });
+  const shareTotal = shares.reduce((sum, share) => sum + share.percent, 0);
+
+  function splitEvenly(personIds: string[]) {
+    const percent = personIds.length ? 100 / personIds.length : 0;
+    return people.map((person) => ({
+      personId: person.id,
+      percent: personIds.includes(person.id) ? percent : 0,
+    }));
+  }
+
+  function toggleSharePerson(personId: string) {
+    setShares((current) => {
+      const selectedIds = current.filter((share) => share.percent > 0).map((share) => share.personId);
+      const nextIds = selectedIds.includes(personId)
+        ? selectedIds.filter((id) => id !== personId)
+        : [...selectedIds, personId];
+
+      return splitEvenly(nextIds);
+    });
+  }
+
+  function updateSharePercent(personId: string, value: number) {
+    setShares((current) => {
+      const otherTotal = current.reduce((sum, share) => (share.personId === personId ? sum : sum + share.percent), 0);
+      const nextPercent = Math.min(Math.max(value, 0), Math.max(0, 100 - otherTotal));
+
+      return current.map((share) => (share.personId === personId ? { ...share, percent: nextPercent } : share));
+    });
+  }
 
   async function linkProduct(product: ProductCardData | null) {
     const response = await fetch(`/api/past-orders/${order.id}/items/${item.id}/link`, {
@@ -483,14 +514,33 @@ function OrderItemCard({ item, order, people, language, onOrderChange }: { item:
         <ProductPicker onSelect={linkProduct} selected={item.product} supermarket={order.supermarket} />
 
         <div className="rounded-2xl bg-gray-50 p-3">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Split this line</p>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Split this line</p>
+            <span className={`rounded-full px-3 py-1 text-xs font-medium ${shareTotal > 100 ? "bg-red-100 text-red-700" : "bg-white text-gray-600"}`}>{Math.round(shareTotal * 10) / 10}% assigned</span>
+          </div>
+          <div className="mb-3 flex flex-wrap gap-2">
+            {people.map((person) => {
+              const active = shares.some((share) => share.personId === person.id && share.percent > 0);
+
+              return (
+                <button
+                  className={`rounded-full border px-3 py-2 text-sm transition ${active ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-100"}`}
+                  key={person.id}
+                  onClick={() => toggleSharePerson(person.id)}
+                  type="button"
+                >
+                  {person.name}
+                </button>
+              );
+            })}
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {people.map((person) => {
               const share = shares.find((entry) => entry.personId === person.id) ?? { personId: person.id, percent: 0 };
               return (
                 <label className="flex items-center gap-2 text-sm" key={person.id}>
                   <span className="min-w-20">{person.name}</span>
-                  <input min={0} onChange={(event) => setShares((current) => current.map((entry) => (entry.personId === person.id ? { ...entry, percent: Number(event.target.value) } : entry)))} step="1" type="number" value={share.percent} />
+                  <input min={0} max={100} onChange={(event) => updateSharePercent(person.id, Number(event.target.value))} step="1" type="number" value={Math.round(share.percent * 10) / 10} />
                   <span>%</span>
                 </label>
               );
