@@ -47,6 +47,7 @@ type AliasSuggestion = {
   alias: string;
   normalized: string;
   exact: boolean;
+  source?: "alias" | "product";
   product: ProductCardData;
 };
 
@@ -811,7 +812,7 @@ function DraftItemRow({ item, onChange, onRemove, supermarket }: { item: DraftIt
                 type="button"
               >
                 <span className="block font-semibold text-gray-900">{suggestion.alias}</span>
-                <span className="block truncate text-gray-500">{suggestion.product.originalName}</span>
+                <span className="block truncate text-gray-500">{suggestion.source === "product" ? "Product name" : "Saved code"} · {suggestion.product.originalName}</span>
               </button>
             ))}
           </div>

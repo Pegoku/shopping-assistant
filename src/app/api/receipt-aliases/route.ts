@@ -52,6 +52,10 @@ function scoreAlias(search: string, normalized: string) {
   return tokenScore >= 0.62 ? tokenScore * 70 : 0;
 }
 
+function scoreProduct(search: string, product: { originalName: string; genericNameEn: string; genericNameEs: string; quantityText: string }) {
+  return scoreAlias(search, normalizeReceiptAlias(`${product.originalName} ${product.genericNameEn} ${product.genericNameEs} ${product.quantityText}`));
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const supermarket = searchParams.get("supermarket");
@@ -74,6 +78,28 @@ export async function GET(request: Request) {
     take: 500,
   });
 
+  const searchTokens = search.split(" ").filter((token) => token.length >= 2).slice(0, 6);
+  const products = await prisma.product.findMany({
+    where: {
+      supermarket: supermarket as Supermarket,
+      ...(searchTokens.length
+        ? {
+            OR: searchTokens.flatMap((token) => [
+              { originalName: { contains: token } },
+              { genericNameEn: { contains: token } },
+              { genericNameEs: { contains: token } },
+              { quantityText: { contains: token } },
+            ]),
+          }
+        : {}),
+    },
+    include: {
+      categories: { include: { category: true } },
+      priceHistory: { orderBy: { capturedAt: "desc" }, take: 8 },
+    },
+    take: 80,
+  });
+
   const scoredAliases = aliases
     .map((alias) => ({ alias, score: scoreAlias(search, alias.normalized) }))
     .filter((entry) => entry.score > 0)
@@ -87,5 +113,26 @@ export async function GET(request: Request) {
       product: mapProductCard(entry.alias.product),
     }));
 
-  return NextResponse.json({ aliases: scoredAliases });
+  const aliasedProductIds = new Set(scoredAliases.map((entry) => entry.product.id));
+  const productMatches = products
+    .filter((product) => !aliasedProductIds.has(product.id))
+    .map((product) => ({ product, score: scoreProduct(search, product) }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 8)
+    .map((entry) => ({
+      id: entry.product.id,
+      alias: entry.product.originalName,
+      normalized: normalizeReceiptAlias(entry.product.originalName),
+      exact: false,
+      source: "product" as const,
+      product: mapProductCard(entry.product),
+    }));
+
+  return NextResponse.json({
+    aliases: [
+      ...scoredAliases.map((entry) => ({ ...entry, source: "alias" as const })),
+      ...productMatches,
+    ].slice(0, 12),
+  });
 }
