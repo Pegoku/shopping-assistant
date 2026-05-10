@@ -44,7 +44,7 @@ function nearestHistoryPrice(
   return null;
 }
 
-function mapProductCard(product: {
+export function mapProductCard(product: {
   id: string;
   supermarket: "AH" | "JUMBO";
   originalName: string;

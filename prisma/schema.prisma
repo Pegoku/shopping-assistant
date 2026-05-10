@@ -20,6 +20,12 @@ enum FetchStatus {
   FAILED
 }
 
+enum PastOrderSource {
+  MANUAL
+  AI_RECEIPT
+  WHATSAPP
+}
+
 model Product {
   id               String            @id @default(cuid())
   supermarket      Supermarket
@@ -41,6 +47,81 @@ model Product {
   categories       ProductCategory[]
   priceHistory     PriceHistory[]
   adminEdits       AdminEdit[]
+  receiptAliases   ReceiptProductAlias[]
+  pastOrderItems   PastOrderItem[]
+}
+
+model Person {
+  id        String           @id @default(cuid())
+  name      String           @unique
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  paidOrders PastOrder[]      @relation("PastOrderPayer")
+  itemShares PastOrderItemShare[]
+}
+
+model PastOrder {
+  id              String          @id @default(cuid())
+  supermarket     Supermarket
+  source          PastOrderSource @default(MANUAL)
+  orderedAt       DateTime        @default(now())
+  payerId         String?
+  total           Float           @default(0)
+  rawReceiptText  String?
+  receiptImageName String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  payer           Person?         @relation("PastOrderPayer", fields: [payerId], references: [id], onDelete: SetNull)
+  items           PastOrderItem[]
+
+  @@index([orderedAt])
+  @@index([supermarket])
+}
+
+model PastOrderItem {
+  id             String      @id @default(cuid())
+  orderId        String
+  productId      String?
+  receiptName    String
+  quantity       Float       @default(1)
+  unitPrice      Float?
+  totalPrice     Float
+  aiConfidence   Float?
+  sortOrder      Int         @default(0)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  order          PastOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        Product?    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  shares         PastOrderItemShare[]
+
+  @@index([orderId, sortOrder])
+  @@index([productId])
+}
+
+model PastOrderItemShare {
+  id        String        @id @default(cuid())
+  itemId    String
+  personId  String
+  percent   Float
+  item      PastOrderItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  person    Person        @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, personId])
+  @@index([personId])
+}
+
+model ReceiptProductAlias {
+  id          String      @id @default(cuid())
+  supermarket Supermarket
+  alias       String
+  normalized  String
+  productId   String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([supermarket, normalized])
+  @@index([productId])
 }
 
 model Category {

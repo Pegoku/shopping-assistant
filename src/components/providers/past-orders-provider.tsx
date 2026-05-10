@@ -56,6 +56,33 @@ export function PastOrdersProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        const groups = items.reduce<Record<string, CartItem[]>>((accumulator, item) => {
+          accumulator[item.supermarket] = [...(accumulator[item.supermarket] ?? []), item];
+          return accumulator;
+        }, {});
+
+        for (const [supermarket, storeItems] of Object.entries(groups)) {
+          void fetch("/api/past-orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              supermarket,
+              source: "WHATSAPP",
+              total: storeItems.reduce((sum, item) => sum + item.currentPrice * item.quantity, 0),
+              rawReceiptText: recipient ? `WhatsApp pack sent to ${recipient}` : "WhatsApp pack",
+              items: storeItems.map((item) => ({
+                receiptName: item.originalName,
+                quantity: item.quantity,
+                unitPrice: item.currentPrice,
+                totalPrice: item.currentPrice * item.quantity,
+                productId: item.id,
+              })),
+            }),
+          }).catch(() => {
+            // Keep legacy local history even if the shared DB write fails.
+          });
+        }
+
         setPacks((current) => [
           {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

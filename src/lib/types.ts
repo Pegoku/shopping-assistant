@@ -82,6 +82,67 @@ export type PastOrderPack = {
   items: CartItem[];
 };
 
+export type PersonData = {
+  id: string;
+  name: string;
+};
+
+export type PastOrderShareData = {
+  personId: string;
+  personName: string;
+  percent: number;
+};
+
+export type PastOrderItemData = {
+  id: string;
+  receiptName: string;
+  quantity: number;
+  unitPrice: number | null;
+  totalPrice: number;
+  aiConfidence: number | null;
+  product: ProductCardData | null;
+  shares: PastOrderShareData[];
+};
+
+export type SettlementRow = {
+  fromPersonId: string;
+  fromName: string;
+  toPersonId: string;
+  toName: string;
+  amount: number;
+};
+
+export type PastOrderData = {
+  id: string;
+  supermarket: "AH" | "JUMBO";
+  source: "MANUAL" | "AI_RECEIPT" | "WHATSAPP";
+  orderedAt: string;
+  total: number;
+  rawReceiptText: string | null;
+  receiptImageName: string | null;
+  payer: PersonData | null;
+  items: PastOrderItemData[];
+  settlement: SettlementRow[];
+};
+
+export type ReceiptScanItem = {
+  receiptName: string;
+  quantity: number;
+  unitPrice: number | null;
+  totalPrice: number;
+  product: ProductCardData | null;
+  aiConfidence: number | null;
+};
+
+export type ReceiptScanResult = {
+  supermarket: "AH" | "JUMBO";
+  orderedAt: string | null;
+  total: number | null;
+  rawReceiptText: string | null;
+  items: ReceiptScanItem[];
+  notes: string | null;
+};
+
 export type FetchRunSummary = {
   id: string;
   status: string;
