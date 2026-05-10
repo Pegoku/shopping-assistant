@@ -185,9 +185,8 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
     setFeedback(null);
 
     try {
-      const scannedOrders: DraftOrder[] = [];
-
-      for (const group of groups) {
+      const scannedOrders = await Promise.all(
+        groups.map(async (group) => {
         const formData = new FormData();
         formData.set("supermarket", supermarket);
         group.forEach((page) => formData.append("files", page.file));
@@ -198,7 +197,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
           throw new Error(payload.error ?? "Failed to scan receipt");
         }
 
-        scannedOrders.push({
+        return {
           localId: crypto.randomUUID(),
           orderedAt: payload.result.orderedAt ? new Date(payload.result.orderedAt).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
           items: payload.result.items.map((item) => ({ ...item, localId: crypto.randomUUID() })),
@@ -207,9 +206,9 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
             receiptImageName: payload.result.receiptImageName ?? group.map((page) => page.label).join(", "),
             total: payload.result.total,
           },
-        });
-
-      }
+        } satisfies DraftOrder;
+        }),
+      );
 
       setDraftOrders(scannedOrders.length ? scannedOrders : [newDraftOrder()]);
       setActiveDraftOrderIndex(0);
