@@ -1,3 +1,6 @@
+import { hostname } from "node:os";
+import { join, resolve } from "node:path";
+import { readlink, unlink } from "node:fs/promises";
 import QRCode from "qrcode";
 import type { CartItem } from "@/lib/types";
 import { buildCartItemWhatsAppCaption, getUpstreamImageUrl } from "@/lib/cart-share";
@@ -171,6 +174,48 @@ function getWebJsConfig() {
   };
 }
 
+function getWebJsUserDataDir(config: ReturnType<typeof getWebJsConfig>) {
+  return join(resolve(config.dataPath), `session-${config.clientId}`);
+}
+
+function isProcessRunning(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? error.code : null;
+    return code !== "ESRCH";
+  }
+}
+
+async function removeStaleChromiumProfileLock(config: ReturnType<typeof getWebJsConfig>) {
+  const userDataDir = getWebJsUserDataDir(config);
+  const lockPath = join(userDataDir, "SingletonLock");
+  const lockTarget = await readlink(lockPath).catch(() => null);
+
+  if (!lockTarget) {
+    return;
+  }
+
+  const separatorIndex = lockTarget.lastIndexOf("-");
+  const lockHost = separatorIndex >= 0 ? lockTarget.slice(0, separatorIndex) : null;
+  const lockPid = separatorIndex >= 0 ? Number(lockTarget.slice(separatorIndex + 1)) : NaN;
+
+  if (lockHost === hostname() && Number.isInteger(lockPid) && isProcessRunning(lockPid)) {
+    logWhatsApp("Chromium profile is locked by a running process", {
+      userDataDir,
+      lockTarget,
+    });
+    return;
+  }
+
+  await Promise.all(["SingletonLock", "SingletonSocket", "SingletonCookie"].map((fileName) => unlink(join(userDataDir, fileName)).catch(() => undefined)));
+  logWhatsApp("removed stale Chromium profile lock", {
+    userDataDir,
+    lockTarget,
+  });
+}
+
 function getMetaConfig() {
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -210,6 +255,8 @@ function resetReadyPromise() {
 async function initializeWebJsClient() {
   const { Client, LocalAuth } = await import("whatsapp-web.js");
   const config = getWebJsConfig();
+
+  await removeStaleChromiumProfileLock(config);
 
   resetReadyPromise();
   webJsStore.state = {
