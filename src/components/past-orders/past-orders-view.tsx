@@ -8,6 +8,7 @@ import { useCart } from "@/components/providers/cart-provider";
 import { useFavourites } from "@/components/providers/favourites-provider";
 import { useLanguage } from "@/components/providers/language-provider";
 import { getShareableImageUrl } from "@/lib/cart-share";
+import { createClientId } from "@/lib/client-id";
 import { toCartItem, toFavouriteItem } from "@/lib/product-items";
 import type { CartItem, PastOrderData, PastOrderItemData, PersonData, ProductCardData, ReceiptScanResult } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
@@ -59,7 +60,7 @@ type PastOrdersViewProps = {
 
 function newDraftItem(): DraftItem {
   return {
-    localId: crypto.randomUUID(),
+    localId: createClientId(),
     existingItemId: null,
     receiptName: "",
     quantity: 1,
@@ -73,7 +74,7 @@ function newDraftItem(): DraftItem {
 
 function newDraftOrder(): DraftOrder {
   return {
-    localId: crypto.randomUUID(),
+    localId: createClientId(),
     orderedAt: new Date().toISOString().slice(0, 16),
     items: [newDraftItem()],
     meta: { rawReceiptText: null, receiptImageName: null, total: null },
@@ -255,9 +256,9 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
         }
 
         return {
-          localId: crypto.randomUUID(),
+          localId: createClientId(),
           orderedAt: payload.result.orderedAt ? new Date(payload.result.orderedAt).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
-          items: payload.result.items.map((item) => ({ ...item, localId: crypto.randomUUID(), existingItemId: null })),
+          items: payload.result.items.map((item) => ({ ...item, localId: createClientId(), existingItemId: null })),
           meta: {
             rawReceiptText: payload.result.rawReceiptText,
             receiptImageName: payload.result.receiptImageName ?? group.map((page) => page.label).join(", "),
@@ -357,10 +358,10 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
     setPayerId(order.payer?.id ?? "");
     setDraftOrders([
       {
-        localId: crypto.randomUUID(),
+        localId: createClientId(),
         orderedAt: new Date(order.orderedAt).toISOString().slice(0, 16),
         items: order.items.map((item) => ({
-          localId: crypto.randomUUID(),
+          localId: createClientId(),
           existingItemId: item.id,
           receiptName: item.receiptName,
           quantity: item.quantity,
@@ -415,7 +416,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
             new Uint8Array(pageBuffer).set(pageBytes);
             const pageFile = new File([pageBuffer], `${file.name.replace(/\.pdf$/i, "")}-page-${pageIndex + 1}.pdf`, { type: "application/pdf" });
             pages.push({
-              id: crypto.randomUUID(),
+              id: createClientId(),
               label: `${file.name} · page ${pageIndex + 1}/${pageCount}`,
               file: pageFile,
               previewUrl: URL.createObjectURL(pageFile),
@@ -427,7 +428,7 @@ export function PastOrdersView({ initialOrders, initialPeople }: PastOrdersViewP
 
         if (file.type.startsWith("image/")) {
           pages.push({
-            id: crypto.randomUUID(),
+            id: createClientId(),
             label: file.name,
             file,
             previewUrl: URL.createObjectURL(file),

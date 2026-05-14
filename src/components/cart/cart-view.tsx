@@ -7,6 +7,7 @@ import { useLanguage } from "@/components/providers/language-provider";
 import { useCart } from "@/components/providers/cart-provider";
 import { usePastOrders } from "@/components/providers/past-orders-provider";
 import { getShareableImageUrl } from "@/lib/cart-share";
+import { createClientId } from "@/lib/client-id";
 import { formatCurrency } from "@/lib/utils";
 
 type WhatsAppStatusPayload = {
@@ -144,7 +145,7 @@ export function CartView() {
   const showProgress = Boolean(sendProgress && (isSending || sendProgress.status === "completed"));
 
   async function handleSendToWhatsApp() {
-    const progressId = crypto.randomUUID();
+    const progressId = createClientId();
 
     setIsSending(true);
     setSendFeedback(null);
