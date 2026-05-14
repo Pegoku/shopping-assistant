@@ -9,6 +9,7 @@ services:
     environment:
       SCRAPER_PROXY_URL: http://vpn:8888
       WHATSAPP_WEBJS_DATA_PATH: /app/.wwebjs_auth
+      WHATSAPP_WEBJS_CHROME_PATH: /usr/bin/chromium
       DATABASE_URL: file:/data/dev.db
     ports:
       - "3000:3000"
